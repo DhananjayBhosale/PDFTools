@@ -52,7 +52,7 @@ export const ImageToPDF: React.FC = () => {
   
   // Reorder Engine for Pages
   const containerRef = useRef<HTMLDivElement>(null);
-  const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder({
+  const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder<PageData>({
     items: pages,
     onReorder: setPages,
     containerRef,

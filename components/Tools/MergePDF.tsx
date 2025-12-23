@@ -36,7 +36,7 @@ export const MergePDF: React.FC = () => {
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder({
+  const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder<PDFFile>({
     items: files,
     onReorder: setFiles,
     containerRef,
