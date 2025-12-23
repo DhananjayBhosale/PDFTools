@@ -1,17 +1,15 @@
 
-import { PDFDocument, rgb, degrees, StandardFonts, PDFFont, breakTextIntoLines } from 'pdf-lib';
+import { PDFDocument, rgb, degrees, StandardFonts, PDFFont } from 'pdf-lib';
 import JSZip from 'jszip';
 import { PDFMetadata } from '../types';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Fix for ESM import of pdfjs-dist which might be wrapped in default
+// Fix for ESM import of pdfjs-dist
 const pdfjs = (pdfjsLib as any).default || pdfjsLib;
 
 // Configure Worker
 if (typeof window !== 'undefined') {
-  // Ensure GlobalWorkerOptions exists before setting workerSrc
   if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
-    // Use cdnjs for the worker as it is more reliable for classic script loading via importScripts
     pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
 }
@@ -26,13 +24,10 @@ const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
   });
 };
 
-// Helper to safely get Uint8Array from ArrayBuffer
-// Slicing ensures we pass a copy if needed and avoid detachment issues with some browser implementations of workers
 const getSafeBuffer = (buffer: ArrayBuffer): Uint8Array => {
   return new Uint8Array(buffer).slice(0);
 };
 
-// --- Expose PDF.js Document for UI ---
 export const loadPDFDocument = async (file: File) => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   return pdfjs.getDocument(getSafeBuffer(arrayBuffer)).promise;
@@ -72,11 +67,11 @@ export const getPdfPagePreviews = async (file: File): Promise<string[]> => {
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
   const previews: string[] = [];
-  const maxPages = Math.min(numPages, 50); // Cap at 50 for performance safety in previews
+  const maxPages = Math.min(numPages, 50);
 
   for (let i = 1; i <= maxPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 0.3 }); // Thumbnail scale
+    const viewport = page.getViewport({ scale: 0.3 });
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     
@@ -85,7 +80,6 @@ export const getPdfPagePreviews = async (file: File): Promise<string[]> => {
     canvas.height = viewport.height;
     canvas.width = viewport.width;
 
-    // Force opaque white background
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -93,6 +87,44 @@ export const getPdfPagePreviews = async (file: File): Promise<string[]> => {
     previews.push(canvas.toDataURL('image/jpeg', 0.8));
   }
   return previews;
+};
+
+// --- PDF to Image Rendering ---
+
+export interface ImageExportConfig {
+  format: 'image/jpeg' | 'image/png' | 'image/webp';
+  quality: number; // 0 to 1
+  scale: number; // 1 = 72dpi, 2 = 144dpi, etc.
+}
+
+export const renderPageAsImage = async (
+  pdfDoc: any, 
+  pageIndex: number, 
+  config: ImageExportConfig
+): Promise<{ dataUrl: string; width: number; height: number; sizeBytes: number }> => {
+  const page = await pdfDoc.getPage(pageIndex + 1);
+  const viewport = page.getViewport({ scale: config.scale });
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas context failed');
+  
+  // White background for transparency handling in JPEGs
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  
+  const dataUrl = canvas.toDataURL(config.format, config.quality);
+  
+  // Estimate size (Base64 length * 0.75)
+  const head = `data:${config.format};base64,`;
+  const sizeBytes = Math.round((dataUrl.length - head.length) * 0.75);
+
+  return { dataUrl, width: canvas.width, height: canvas.height, sizeBytes };
 };
 
 // --- Core PDF Functions ---
@@ -108,20 +140,53 @@ export const mergePDFs = async (files: File[]): Promise<Uint8Array> => {
   return mergedPdf.save();
 };
 
-export const createPDFFromImages = async (files: File[]): Promise<Uint8Array> => {
+export const createPDFFromImages = async (
+  files: File[], 
+  layout: { fit: 'contain' | 'cover' | 'fill', margin: number } = { fit: 'contain', margin: 0 }
+): Promise<Uint8Array> => {
   const pdfDoc = await PDFDocument.create();
+  
   for (const file of files) {
     const arrayBuffer = await readFileAsArrayBuffer(file);
     let image;
-    if (file.type === 'image/jpeg') {
-      image = await pdfDoc.embedJpg(arrayBuffer);
-    } else if (file.type === 'image/png') {
-      image = await pdfDoc.embedPng(arrayBuffer);
-    } else {
+    
+    try {
+      if (file.type === 'image/jpeg') {
+        image = await pdfDoc.embedJpg(arrayBuffer);
+      } else if (file.type === 'image/png') {
+        image = await pdfDoc.embedPng(arrayBuffer);
+      } else {
+        continue;
+      }
+    } catch (e) {
+      console.warn(`Skipping invalid image: ${file.name}`);
       continue;
     }
-    const page = pdfDoc.addPage([image.width, image.height]);
-    page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+
+    // A4 Dimensions (Points)
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+    
+    const { width, height } = image.scale(1);
+    const availableWidth = pageWidth - (layout.margin * 2);
+    const availableHeight = pageHeight - (layout.margin * 2);
+
+    // Calculate dimensions based on layout preference
+    // Defaulting to "fit within A4" logic for simple reordering flow
+    const scale = Math.min(availableWidth / width, availableHeight / height);
+    const displayWidth = width * scale;
+    const displayHeight = height * scale;
+
+    const x = (pageWidth - displayWidth) / 2;
+    const y = (pageHeight - displayHeight) / 2;
+
+    page.drawImage(image, {
+      x,
+      y,
+      width: displayWidth,
+      height: displayHeight
+    });
   }
   return pdfDoc.save();
 };
@@ -235,8 +300,6 @@ export const getPDFPageCount = async (file: File): Promise<number> => {
   }
 };
 
-// --- NEW CAPABILITIES ---
-
 export const flattenPDF = async (file: File): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
@@ -247,7 +310,6 @@ export const flattenPDF = async (file: File): Promise<Uint8Array> => {
 
 export const unlockPDF = async (file: File, password: string): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
-  // Loading with password and saving without options removes encryption
   const pdfDoc = await PDFDocument.load(arrayBuffer, { password } as any);
   return pdfDoc.save();
 };
@@ -267,321 +329,98 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
   return fullText;
 };
 
-// --- REFLOW / BLOCK EDITING LOGIC ---
+// --- NEW ANNOTATION / OVERLAY EDITING LOGIC ---
 
-export type BlockType = 'text' | 'image' | 'spacing';
-
-export interface LayoutBlock {
+export interface EditorElement {
   id: string;
-  type: BlockType;
-  content: string; // Text content or DataURL for image
-  width?: number; // For images (px or ratio)
-  height?: number; // For images
-  fontSize?: number; // For text
-  align?: 'left' | 'center' | 'right';
-  fontFamily?: string; // standard font name
+  type: 'text' | 'image';
+  pageIndex: number;
+  x: number; // Percentage 0-1 relative to page width
+  y: number; // Percentage 0-1 relative to page height
+  width?: number; // Percentage 0-1
+  height?: number; // Percentage 0-1
+  rotation?: number; // Degrees
+  content: string; // Text string or DataURL
+  // Text specific styles
+  fontSize?: number; // pt (approx) - We might need to map this carefully
+  color?: string; // Hex
+  fontFamily?: string;
 }
 
-// 1. Parse PDF into Blocks
-export const parsePDFToBlocks = async (file: File): Promise<LayoutBlock[]> => {
+export const savePDFWithAnnotations = async (file: File, elements: EditorElement[]): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
-  const loadingTask = pdfjs.getDocument(getSafeBuffer(arrayBuffer));
-  const pdf = await loadingTask.promise;
-  
-  const blocks: LayoutBlock[] = [];
+  const pdfDoc = await PDFDocument.load(arrayBuffer);
+  const pages = pdfDoc.getPages();
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    
-    // Sort items by Y (descending) then X (ascending)
-    const items = content.items.map((item: any) => ({
-      str: item.str,
-      x: item.transform[4],
-      y: item.transform[5], // PDF Y is bottom-up
-      h: item.height || 12,
-      fontName: item.fontName,
-      hasEOL: item.hasEOL
-    }));
-
-    // Grouping Logic (Simplified)
-    // We group items that are on the same line (approx Y)
-    // Then group lines that are close (approx Y gap)
-    
-    // 1. Group by Lines
-    items.sort((a: any, b: any) => {
-      const yDiff = Math.abs(a.y - b.y);
-      if (yDiff < 5) return a.x - b.x; // Same line
-      return b.y - a.y; // Top to bottom
-    });
-
-    let currentBlock: LayoutBlock | null = null;
-    let lastY = -999;
-
-    items.forEach((item: any) => {
-      // Basic gap detection for paragraph breaks
-      const isNewLine = Math.abs(item.y - lastY) > (item.h * 1.5);
-      
-      if (!currentBlock || (isNewLine && Math.abs(item.y - lastY) > item.h * 2)) {
-         // Start new block if gap is large
-         if (currentBlock && currentBlock.content.trim().length > 0) blocks.push(currentBlock);
-         
-         currentBlock = {
-           id: crypto.randomUUID(),
-           type: 'text',
-           content: item.str,
-           fontSize: Math.round(item.h) || 12,
-           align: 'left'
-         };
-      } else {
-         // Append to current block
-         const spacer = isNewLine ? ' ' : ''; // If strict newline, maybe \n? For flow, space is usually safer unless we detect bullets
-         currentBlock.content += (currentBlock.content.endsWith(' ') ? '' : ' ') + item.str;
-      }
-      lastY = item.y;
-    });
-
-    if (currentBlock) blocks.push(currentBlock);
-    
-    // Add Page Break Spacer
-    if (i < pdf.numPages) {
-      blocks.push({ id: crypto.randomUUID(), type: 'spacing', content: '', height: 20 });
-    }
-  }
-
-  return blocks;
-};
-
-// 2. Generate PDF from Blocks (Reflow Engine)
-export const generateReflowedPDF = async (blocks: LayoutBlock[]): Promise<Uint8Array> => {
-  const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  
-  // Page Settings
-  const pageWidth = 595.28; // A4
-  const pageHeight = 841.89;
-  const margin = 50;
-  const contentWidth = pageWidth - (margin * 2);
-  
-  let page = pdfDoc.addPage([pageWidth, pageHeight]);
-  let cursorY = pageHeight - margin;
-
-  const checkPageBreak = (neededHeight: number) => {
-    if (cursorY - neededHeight < margin) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      cursorY = pageHeight - margin;
-    }
+  // Load Standard Fonts
+  const fonts = {
+    Helvetica: await pdfDoc.embedFont(StandardFonts.Helvetica),
+    TimesRoman: await pdfDoc.embedFont(StandardFonts.TimesRoman),
+    Courier: await pdfDoc.embedFont(StandardFonts.Courier),
   };
 
-  for (const block of blocks) {
-    if (block.type === 'spacing') {
-      cursorY -= (block.height || 20);
-      continue;
-    }
+  const hexToRgb = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return rgb(r, g, b);
+  };
 
-    if (block.type === 'image') {
-       // Embed Image
+  for (const el of elements) {
+    if (el.pageIndex < 0 || el.pageIndex >= pages.length) continue;
+    const page = pages[el.pageIndex];
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+
+    // Coordinate Conversion (UI % -> PDF Points)
+    // PDF origin is Bottom-Left. UI origin is Top-Left.
+    const pdfX = el.x * pageWidth;
+    const pdfY = pageHeight - (el.y * pageHeight); // Invert Y
+
+    if (el.type === 'image') {
        try {
          let image;
-         if (block.content.startsWith('data:image/png')) image = await pdfDoc.embedPng(block.content);
-         else image = await pdfDoc.embedJpg(block.content);
+         if (el.content.startsWith('data:image/png')) image = await pdfDoc.embedPng(el.content);
+         else image = await pdfDoc.embedJpg(el.content);
+
+         const w = (el.width || 0.2) * pageWidth;
+         const h = (el.height || 0.2) * pageHeight;
          
-         // Calculate dimensions (fit to width)
-         const imgDims = image.scale(1);
-         let renderWidth = contentWidth;
-         let renderHeight = (imgDims.height / imgDims.width) * renderWidth;
+         // pdfY is the top-left of the image in UI terms, but drawImage takes bottom-left usually?
+         // No, pdf-lib drawImage x/y is the bottom-left corner of the image.
+         // In UI, (x,y) is Top-Left. 
+         // So if UI Y is 0.2 (20% down), PDF Y is 80% up.
+         // If we draw at 80% up, the image extends UP from there? No, standard is it extends up and right.
+         // So we need to subtract height from pdfY to get the bottom-left corner.
          
-         // If block has specific width ratio (from resizing in UI), use it
-         if (block.width && block.width > 0 && block.width <= 1) {
-            renderWidth = contentWidth * block.width;
-            renderHeight = (imgDims.height / imgDims.width) * renderWidth;
-         }
-
-         checkPageBreak(renderHeight + 20);
-
-         // Center image if smaller than full width
-         const xOffset = margin + (contentWidth - renderWidth) / 2;
-
          page.drawImage(image, {
-           x: xOffset,
-           y: cursorY - renderHeight,
-           width: renderWidth,
-           height: renderHeight
+           x: pdfX,
+           y: pdfY - h, // Shift down by height to position top-left at pdfY
+           width: w,
+           height: h,
+           rotate: degrees(el.rotation || 0),
          });
-         
-         cursorY -= (renderHeight + 20); // Spacing after image
        } catch (e) {
-         console.warn("Failed to embed image in reflow", e);
+         console.warn("Failed to embed image", e);
        }
-    }
-
-    if (block.type === 'text') {
-      const fontSize = block.fontSize || 12;
-      const lineHeight = fontSize * 1.2;
-      
-      // Word Wrap
-      const paragraphs = block.content.split('\n');
-      
-      for (const p of paragraphs) {
-        if (!p.trim()) {
-           cursorY -= lineHeight; // Empty line
-           continue; 
-        }
-
-        // Simple word wrap
-        const words = p.split(' ');
-        let currentLine = '';
-        
-        for (const word of words) {
-           const testLine = currentLine ? `${currentLine} ${word}` : word;
-           const width = font.widthOfTextAtSize(testLine, fontSize);
-           
-           if (width > contentWidth) {
-              // Draw current line
-              checkPageBreak(lineHeight);
-              page.drawText(currentLine, { x: margin, y: cursorY, size: fontSize, font: font, lineHeight });
-              cursorY -= lineHeight;
-              currentLine = word;
-           } else {
-              currentLine = testLine;
-           }
-        }
-        // Draw last line
-        if (currentLine) {
-           checkPageBreak(lineHeight);
-           page.drawText(currentLine, { x: margin, y: cursorY, size: fontSize, font: font, lineHeight });
-           cursorY -= lineHeight;
-        }
-        
-        cursorY -= (lineHeight * 0.5); // Paragraph spacing
-      }
-      cursorY -= 10; // Block spacing
-    }
-  }
-
-  return pdfDoc.save();
-};
-
-// --- SIGNATURE SUPPORT ---
-
-export interface SignaturePlacement {
-  id: string;
-  pageIndex: number;
-  dataUrl: string; // PNG/JPEG base64
-  x: number; // Percentage 0-1
-  y: number; // Percentage 0-1
-  width: number; // Percentage of page width 0-1
-  aspectRatio: number; // width/height
-}
-
-export const applySignaturesToPDF = async (file: File, signatures: SignaturePlacement[]): Promise<Uint8Array> => {
-  const arrayBuffer = await readFileAsArrayBuffer(file);
-  const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const pages = pdfDoc.getPages();
-
-  for (const sig of signatures) {
-    if (sig.pageIndex < 0 || sig.pageIndex >= pages.length) continue;
-    
-    const page = pages[sig.pageIndex];
-    const { width: pageWidth, height: pageHeight } = page.getSize();
-    
-    // Embed the image
-    let image;
-    // Simple check for mime type signature in base64
-    if (sig.dataUrl.startsWith('data:image/png')) {
-      image = await pdfDoc.embedPng(sig.dataUrl);
-    } else {
-      image = await pdfDoc.embedJpg(sig.dataUrl);
-    }
-    
-    // Calculate final dimensions based on percentage
-    const finalWidth = pageWidth * sig.width;
-    const finalHeight = finalWidth / sig.aspectRatio;
-    
-    // Calculate coordinates
-    // PDF coordinates start at bottom-left
-    // UI input 'y' is typically top-down percentage
-    const pdfX = pageWidth * sig.x;
-    const pdfY = pageHeight - (pageHeight * sig.y) - finalHeight;
-
-    page.drawImage(image, {
-      x: pdfX,
-      y: pdfY,
-      width: finalWidth,
-      height: finalHeight,
-    });
-  }
-
-  return pdfDoc.save();
-};
-
-// --- EDITING LOGIC (Redact & Replace) ---
-
-export interface TextEdit {
-  pageIndex: number;
-  originalText: string;
-  newText: string;
-  x: number; // PDF Points
-  y: number; // PDF Points (bottom-left origin)
-  width: number; // PDF Points
-  height: number; // PDF Points
-  fontSize: number;
-  fontName: string;
-  backgroundColor: [number, number, number]; // RGB 0-255
-}
-
-export const saveEditedPDF = async (file: File, edits: TextEdit[]): Promise<Uint8Array> => {
-  const arrayBuffer = await readFileAsArrayBuffer(file);
-  const pdfDoc = await PDFDocument.load(arrayBuffer);
-  
-  // Embed standard fonts
-  const fontHelvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontTimes = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-  const fontCourier = await pdfDoc.embedFont(StandardFonts.Courier);
-
-  const getFont = (name: string): PDFFont => {
-    const n = name.toLowerCase();
-    if (n.includes('times') || n.includes('roman')) return fontTimes;
-    if (n.includes('courier') || n.includes('mono')) return fontCourier;
-    return fontHelvetica;
-  };
-
-  const pages = pdfDoc.getPages();
-
-  for (const edit of edits) {
-    if (edit.pageIndex < 0 || edit.pageIndex >= pages.length) continue;
-    const page = pages[edit.pageIndex];
-    const { height } = page.getSize();
-
-    // 1. REDACT (Draw rectangle over old text)
-    // Need to handle coordinate flip (PDF is bottom-up, UI provided top-down usually, but let's assume UI passed PDF coords or we convert there)
-    // Our UI implementation will pass PDF coords directly to keep this pure.
-    
-    // Background color 0-255 -> 0-1
-    const bgR = edit.backgroundColor[0] / 255;
-    const bgG = edit.backgroundColor[1] / 255;
-    const bgB = edit.backgroundColor[2] / 255;
-
-    page.drawRectangle({
-      x: edit.x,
-      y: edit.y,
-      width: edit.width,
-      height: edit.height * 1.2, // Slightly larger to cover ascenders/descenders
-      color: rgb(bgR, bgG, bgB),
-    });
-
-    // 2. REPLACE (Draw new text)
-    if (edit.newText.trim() !== "") {
-      const font = getFont(edit.fontName);
-      // Center vertically in the box approx
-      page.drawText(edit.newText, {
-        x: edit.x,
-        y: edit.y + (edit.height * 0.1), // Slight bump for baseline
-        size: edit.fontSize,
-        font: font,
-        color: rgb(0, 0, 0), // Assuming black text for MVP, could sample color too
-      });
+    } else if (el.type === 'text') {
+       const font = fonts[el.fontFamily as keyof typeof fonts] || fonts.Helvetica;
+       const size = el.fontSize || 12;
+       
+       // Handle multiline
+       const lines = el.content.split('\n');
+       const lineHeight = size * 1.2;
+       
+       // Draw each line
+       lines.forEach((line, i) => {
+         page.drawText(line, {
+           x: pdfX,
+           y: pdfY - (size) - (i * lineHeight), // Adjust for baseline roughly
+           size: size,
+           font: font,
+           color: el.color ? hexToRgb(el.color) : rgb(0, 0, 0),
+           rotate: degrees(el.rotation || 0),
+         });
+       });
     }
   }
 
@@ -599,12 +438,9 @@ export interface AdaptiveConfig {
 }
 
 export const getAdaptiveConfig = (level: CompressionLevel, isTextHeavy: boolean): AdaptiveConfig => {
-  // DPI reference: 1.0 scale is approx 72-96 DPI depending on PDF user unit, usually 72 PDF points = 1 inch.
-  // We assume standard 72 DPI for scale 1.0.
-  
   if (level === 'extreme') {
     return {
-      scale: isTextHeavy ? 1.0 : 0.6, // Text needs readability
+      scale: isTextHeavy ? 1.0 : 0.6, 
       quality: 0.5,
       projectedDPI: isTextHeavy ? 72 : 43
     };
@@ -625,16 +461,10 @@ export const getAdaptiveConfig = (level: CompressionLevel, isTextHeavy: boolean)
 };
 
 export const getInterpolatedConfig = (sliderValue: number, isTextHeavy: boolean): AdaptiveConfig => {
-  // slider 0-100
-  // min scale 0.5 (36 DPI), max 2.5 (180 DPI)
-  // quality 0.3 to 1.0
-  
   const minScale = 0.5;
   const maxScale = 2.5;
   const scale = minScale + (sliderValue / 100) * (maxScale - minScale);
-  
   const quality = 0.3 + (sliderValue / 100) * 0.7;
-  
   return {
     scale,
     quality,
@@ -657,7 +487,6 @@ export const generatePreviewPair = async (file: File, config: AdaptiveConfig): P
   const pdf = await loadingTask.promise;
   const page = await pdf.getPage(1);
   
-  // 1. Render Original (High Quality Reference) - scale 2.0 for crispness
   const viewportOrig = page.getViewport({ scale: 2.0 });
   const canvasOrig = document.createElement('canvas');
   canvasOrig.width = viewportOrig.width;
@@ -668,9 +497,8 @@ export const generatePreviewPair = async (file: File, config: AdaptiveConfig): P
       ctxOrig.fillRect(0,0, canvasOrig.width, canvasOrig.height);
       await page.render({ canvasContext: ctxOrig, viewport: viewportOrig }).promise;
   }
-  const originalUrl = canvasOrig.toDataURL('image/png'); // Lossless for preview
+  const originalUrl = canvasOrig.toDataURL('image/png');
 
-  // 2. Render Compressed (Target Config)
   const viewportComp = page.getViewport({ scale: config.scale });
   const canvasComp = document.createElement('canvas');
   canvasComp.width = viewportComp.width;
@@ -682,12 +510,7 @@ export const generatePreviewPair = async (file: File, config: AdaptiveConfig): P
       await page.render({ canvasContext: ctxComp, viewport: viewportComp }).promise;
   }
   
-  // Get compressed data URL
   const compressedUrl = canvasComp.toDataURL('image/jpeg', config.quality);
-  
-  // Estimate size
-  // Base64 length * 0.75 gives bytes approx.
-  // This is for one page.
   const pageSizeBytes = (compressedUrl.length - 22) * 0.75; 
   const estimatedTotalSize = pageSizeBytes * pdf.numPages;
 
@@ -709,7 +532,6 @@ export const compressPDFAdaptive = async (
   const analysis = await analyzePDF(file);
   const config = customConfig || getAdaptiveConfig(level, analysis.isTextHeavy);
 
-  // If strict mode and safety not overriden
   if (!overrideSafety && config.projectedDPI < 70 && analysis.isTextHeavy) {
      if (level === 'extreme') return { status: 'blocked', data: new Uint8Array(0), meta: { compressedSize: 0, projectedDPI: 0, strategyUsed: '' } };
   }
@@ -731,18 +553,13 @@ export const compressPDFAdaptive = async (
     const context = canvas.getContext('2d');
     if (!context) continue;
     
-    // White background is crucial for transparency handling
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvas.width, canvas.height);
     
     await page.render({ canvasContext: context, viewport }).promise;
     
-    // Compression happens here
     const imgDataUrl = canvas.toDataURL('image/jpeg', config.quality);
-    
     const embeddedImage = await newPdfDoc.embedJpg(imgDataUrl);
-    
-    // Maintain original dimensions
     const originalViewport = page.getViewport({ scale: 1.0 });
     
     const newPage = newPdfDoc.addPage([originalViewport.width, originalViewport.height]);
@@ -768,4 +585,29 @@ export const compressPDFAdaptive = async (
       strategyUsed: `Rasterization (Scale ${config.scale.toFixed(1)}, Q${config.quality.toFixed(1)})`
     }
   };
+};
+
+// --- SIGNATURE SUPPORT ---
+export interface SignaturePlacement {
+  id: string;
+  pageIndex: number;
+  dataUrl: string; 
+  x: number; 
+  y: number; 
+  width: number; 
+  aspectRatio: number; 
+}
+
+export const applySignaturesToPDF = async (file: File, signatures: SignaturePlacement[]): Promise<Uint8Array> => {
+  const elements: EditorElement[] = signatures.map(s => ({
+    id: s.id,
+    type: 'image',
+    pageIndex: s.pageIndex,
+    x: s.x,
+    y: s.y,
+    width: s.width,
+    height: s.width / s.aspectRatio,
+    content: s.dataUrl
+  }));
+  return savePDFWithAnnotations(file, elements);
 };
