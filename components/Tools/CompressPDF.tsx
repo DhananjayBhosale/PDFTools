@@ -143,6 +143,7 @@ export const CompressPDF: React.FC = () => {
   const formatSize = (bytes: number) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
   const isSkipped = result && result.size >= (file?.size || 0);
   const currentDPI = analysis.done ? getAdaptiveConfig(level, analysis.isTextHeavy).projectedDPI : 0;
+  const isLowDPI = currentDPI < 100;
 
   return (
     <div className="max-w-3xl mx-auto py-12 px-4 relative">
@@ -307,6 +308,53 @@ export const CompressPDF: React.FC = () => {
                
                {!result ? (
                  <div className="flex flex-col gap-3">
+                   {/* Preview & Tune Button - HIGHLIGHTED */}
+                   {analysis.done && !status.isProcessing && (
+                      <button
+                        onClick={triggerPreview}
+                        className={`
+                          w-full mb-1 py-3 px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-between group relative overflow-hidden text-left
+                          ${isLowDPI
+                            ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50 hover:border-amber-400 dark:hover:border-amber-500'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md'
+                          }
+                        `}
+                      >
+                         <div className="flex items-center gap-3 relative z-10">
+                            <div className={`
+                               p-2 rounded-lg transition-colors shadow-sm
+                               ${isLowDPI
+                                 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                                 : 'bg-indigo-50 dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white'
+                               }
+                            `}>
+                               <Eye size={20} className={isLowDPI ? "animate-pulse" : ""} />
+                            </div>
+                            <div>
+                               <div className={`text-sm font-bold flex items-center gap-2 ${isLowDPI ? 'text-amber-800 dark:text-amber-200' : 'text-slate-700 dark:text-slate-200'}`}>
+                                  Preview & Tune Quality
+                               </div>
+                               <div className="text-xs opacity-70 dark:text-slate-400 font-medium">
+                                  {isLowDPI ? 'Quality looks low. Check before saving.' : 'Verify readability before compressing.'}
+                               </div>
+                            </div>
+                         </div>
+
+                         <div className="flex items-center gap-3">
+                           <div className={`
+                              text-xs font-mono font-bold px-2 py-1 rounded-md border
+                              ${isLowDPI
+                                 ? 'bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                                 : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400'
+                              }
+                           `}>
+                              {currentDPI} DPI
+                           </div>
+                           <ArrowRight size={16} className={`opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 ${isLowDPI ? 'text-amber-500' : 'text-indigo-500'}`} />
+                         </div>
+                      </button>
+                   )}
+
                    {/* Main Compress Button */}
                    <button
                     onClick={initiateCompression}
@@ -319,16 +367,6 @@ export const CompressPDF: React.FC = () => {
                       <><Layers size={20} className="group-hover:scale-110 transition-transform" /> <span>Compress PDF</span></>
                     )}
                   </button>
-                  
-                  {/* Manual Preview Button */}
-                  {analysis.done && !status.isProcessing && (
-                     <button
-                       onClick={triggerPreview}
-                       className="w-full py-2 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center gap-2 transition-colors"
-                     >
-                       <Eye size={16} /> Preview & Tune Quality ({currentDPI} DPI)
-                     </button>
-                  )}
                  </div>
                ) : (
                  <button 

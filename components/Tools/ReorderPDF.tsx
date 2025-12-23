@@ -15,6 +15,14 @@ interface PageItem {
   url: string;
 }
 
+// 1. Define the Slot Type for the Grid Model
+interface Slot {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
 export const ReorderPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
@@ -27,13 +35,17 @@ export const ReorderPDF: React.FC = () => {
 
   // Dragging State
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overlayPos, setOverlayPos] = useState({ x: 0, y: 0 });
-  
-  // Refs for Drag Logic
+  const [overlayStyle, setOverlayStyle] = useState({ top: 0, left: 0, width: 0, height: 0 });
+
+  // Refs for Logic (Stable across renders)
   const itemsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const scrollInterval = useRef<number | null>(null);
-  const pointerY = useRef<number | null>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const slotsRef = useRef<Slot[]>([]); // 2. Store Slot Rects instead of Centers
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const scrollIntervalRef = useRef<number | null>(null);
+  const pointerPosRef = useRef<{ x: number, y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastTargetIndexRef = useRef<number | null>(null);
 
   // 1. Keyboard Support
   useEffect(() => {
@@ -81,13 +93,12 @@ export const ReorderPDF: React.FC = () => {
 
   const commitToHistory = (newItems: PageItem[]) => {
     const current = history[historyIndex];
-    // Simple comparison of IDs to check if order changed
     if (current && JSON.stringify(newItems.map(p => p.id)) === JSON.stringify(current.map(p => p.id))) {
       return; 
     }
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push(newItems);
-    if (newHistory.length > 30) newHistory.shift();
+    if (newHistory.length > 50) newHistory.shift();
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   };
@@ -108,67 +119,140 @@ export const ReorderPDF: React.FC = () => {
     }
   };
 
-  // --- DRAG & DROP LOGIC (Robust Index-Based) ---
+  // --- DRAG & DROP ENGINE (GRID SLOT MODEL) ---
 
-  const handleDragStart = (e: React.PointerEvent, id: string) => {
+  const getTargetIndex = (docX: number, docY: number): number => {
+    const slots = slotsRef.current;
+    
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+
+      const isInRow = docY >= s.top && docY <= s.bottom;
+      const isAboveRow = docY < s.top;
+      
+      // 1. If we are strictly above a row, we insert at the start of that row
+      if (isAboveRow) {
+        return i;
+      }
+
+      // 2. If we are inside a row, we check horizontal position
+      if (isInRow) {
+        // Calculate center X of the slot
+        const centerX = s.left + (s.right - s.left) / 2;
+        if (docX < centerX) {
+          return i;
+        }
+      }
+    }
+
+    // 3. If we are below all slots, return the length (append to end)
+    return slots.length;
+  };
+
+  const handlePointerDown = (e: React.PointerEvent, id: string) => {
     e.preventDefault();
+    e.stopPropagation();
+
     const el = itemsRef.current.get(id);
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
-    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    setOverlayPos({ x: rect.left, y: rect.top });
-    setActiveId(id);
-    pointerY.current = e.clientY;
+    
+    // 1. Capture Offset for smooth visual drag
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    dragOffsetRef.current = { x: offsetX, y: offsetY };
 
+    // 2. Initialize Overlay
+    setOverlayStyle({
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height
+    });
+    
+    // 3. FREEZE SLOTS (Document Coordinates)
+    // We capture specific slot rectangles for every item EXCEPT the dragged one.
+    const frozenSlots: Slot[] = [];
+    items.forEach((p) => {
+      if (p.id === id) return; // Skip dragged item
+
+      const node = itemsRef.current.get(p.id);
+      if (node) {
+        const r = node.getBoundingClientRect();
+        frozenSlots.push({
+          top: r.top + window.scrollY,
+          bottom: r.bottom + window.scrollY,
+          left: r.left + window.scrollX,
+          right: r.right + window.scrollX,
+        });
+      }
+    });
+
+    // Sort slots visually: Top-to-Bottom, then Left-to-Right
+    // This creates a linear representation of the grid
+    slotsRef.current = frozenSlots.sort((a, b) => {
+       // Allow small sub-pixel tolerance for row alignment
+       if (Math.abs(a.top - b.top) > 5) {
+         return a.top - b.top;
+       }
+       return a.left - b.left;
+    });
+
+    // 4. Set Active State
+    setActiveId(id);
+    dragIdRef.current = id;
+    pointerPosRef.current = { x: e.clientX, y: e.clientY };
+    lastTargetIndexRef.current = null;
+
+    // 5. Attach Listeners
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
     
-    // Start Auto Scroll Loop
+    // 6. Start AutoScroll Loop
     startAutoScroll();
   };
 
   const handlePointerMove = (e: PointerEvent) => {
-    pointerY.current = e.clientY;
-    setOverlayPos({ 
-      x: e.clientX - dragOffset.current.x, 
-      y: e.clientY - dragOffset.current.y 
-    });
+    pointerPosRef.current = { x: e.clientX, y: e.clientY };
     
-    // Core Reordering Logic
-    checkIntersection(e.clientX, e.clientY);
+    // 1. Update Overlay Visuals (Fixed position relative to viewport)
+    setOverlayStyle(prev => ({
+      ...prev,
+      top: e.clientY - dragOffsetRef.current.y,
+      left: e.clientX - dragOffsetRef.current.x
+    }));
+
+    performReorder(e.clientX, e.clientY);
   };
 
-  const checkIntersection = (x: number, y: number) => {
-    // Find item closest to cursor (simple centroid distance)
-    let closestId = null;
-    let minDist = Infinity;
+  const performReorder = (clientX: number, clientY: number) => {
+    const currentDragId = dragIdRef.current;
+    if (!currentDragId) return;
 
-    itemsRef.current.forEach((el, id) => {
-      const rect = el.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dist = Math.hypot(cx - x, cy - y);
+    const docX = clientX + window.scrollX;
+    const docY = clientY + window.scrollY;
+
+    const fromIndex = items.findIndex(p => p.id === currentDragId);
+    if (fromIndex === -1) return;
+
+    const targetIndex = getTargetIndex(docX, docY);
+
+    // Optimization: Don't update if index hasn't changed
+    if (targetIndex === fromIndex) return;
+    if (lastTargetIndexRef.current === targetIndex) return;
+
+    lastTargetIndexRef.current = targetIndex;
+
+    setItems(prevItems => {
+      const copy = [...prevItems];
+      const currentIndex = copy.findIndex(p => p.id === currentDragId);
+      if (currentIndex === -1) return prevItems;
       
-      if (dist < minDist) {
-        minDist = dist;
-        closestId = id;
-      }
+      const [moved] = copy.splice(currentIndex, 1);
+      copy.splice(targetIndex, 0, moved);
+      return copy;
     });
-
-    if (closestId && closestId !== activeId) {
-      setItems(prev => {
-        const oldIndex = prev.findIndex(item => item.id === activeId);
-        const newIndex = prev.findIndex(item => item.id === closestId);
-        
-        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
-
-        const newItems = [...prev];
-        const [moved] = newItems.splice(oldIndex, 1);
-        newItems.splice(newIndex, 0, moved);
-        return newItems;
-      });
-    }
   };
 
   const handlePointerUp = () => {
@@ -176,46 +260,53 @@ export const ReorderPDF: React.FC = () => {
     window.removeEventListener('pointerup', handlePointerUp);
     stopAutoScroll();
     
-    // Final commit is handled via state update check in effect? No, we need current state.
-    // Since 'items' state updates live, we just commit current 'items' to history.
-    // However, inside this event listener, we don't have access to fresh 'items' closure easily without refs.
-    // Solution: We trigger a state update that also commits, or use a ref for items.
-    // Let's use a functional update on setItems to get latest and commit.
-    setItems(currentItems => {
-      commitToHistory(currentItems);
-      return currentItems;
-    });
+    dragIdRef.current = null;
     setActiveId(null);
+    slotsRef.current = [];
+    lastTargetIndexRef.current = null;
+    
+    // Commit final state to history
+    setItems(current => {
+      commitToHistory(current);
+      return current;
+    });
   };
 
   // --- AUTO SCROLL ---
 
   const startAutoScroll = () => {
-    const loop = () => {
-      if (pointerY.current !== null) {
-        const y = pointerY.current;
-        const h = window.innerHeight;
-        const zone = 100;
-        const baseSpeed = 5;
-        const maxSpeed = 20;
+    if (scrollIntervalRef.current) return;
 
-        if (y < zone) {
-           const intensity = (zone - y) / zone;
-           window.scrollBy(0, -(baseSpeed + intensity * maxSpeed));
-        } else if (y > h - zone) {
-           const intensity = (y - (h - zone)) / zone;
-           window.scrollBy(0, baseSpeed + intensity * maxSpeed);
-        }
+    const scrollLoop = () => {
+      if (!pointerPosRef.current || !dragIdRef.current) return;
+      
+      const { x, y } = pointerPosRef.current;
+      const h = window.innerHeight;
+      const zone = 100; // Activation zone
+      
+      // Calculate Scroll Speed
+      let speed = 0;
+      if (y < zone) {
+        speed = -(zone - y) * 0.3; // Scroll Up
+      } else if (y > h - zone) {
+        speed = (y - (h - zone)) * 0.3; // Scroll Down
       }
-      scrollInterval.current = requestAnimationFrame(loop);
+
+      if (speed !== 0) {
+        window.scrollBy(0, speed);
+        // While scrolling, we must re-evaluate reorder logic because document coordinates of the mouse have changed!
+        performReorder(x, y);
+      }
+      
+      scrollIntervalRef.current = requestAnimationFrame(scrollLoop);
     };
-    scrollInterval.current = requestAnimationFrame(loop);
+    
+    scrollIntervalRef.current = requestAnimationFrame(scrollLoop);
   };
 
   const stopAutoScroll = () => {
-    if (scrollInterval.current) cancelAnimationFrame(scrollInterval.current);
-    scrollInterval.current = null;
-    pointerY.current = null;
+    if (scrollIntervalRef.current) cancelAnimationFrame(scrollIntervalRef.current);
+    scrollIntervalRef.current = null;
   };
 
   // --- SAVE ---
@@ -223,7 +314,6 @@ export const ReorderPDF: React.FC = () => {
     if (!file) return;
     setStatus({ isProcessing: true, progress: 10, message: 'Reordering pages...' });
     try {
-      // Use originalIndex to map back to source PDF pages
       const newOrderIndices = items.map(p => p.originalIndex);
       const pdfBytes = await extractPages(file.file, newOrderIndices);
       
@@ -243,11 +333,11 @@ export const ReorderPDF: React.FC = () => {
   const activeItem = items.find(i => i.id === activeId);
 
   return (
-    <div className="max-w-6xl mx-auto py-12 px-4">
+    <div className="max-w-6xl mx-auto py-12 px-4 select-none">
       <div className="mb-8">
          <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Reorder PDF Pages</h1>
-         <p className="text-slate-500 dark:text-slate-400">Drag pages to rearrange. Scroll automatically near edges.</p>
+         <p className="text-slate-500 dark:text-slate-400">Drag pages to rearrange. Drag to edges to auto-scroll.</p>
       </div>
 
       <AnimatePresence mode="wait">
@@ -277,7 +367,7 @@ export const ReorderPDF: React.FC = () => {
             </div>
 
             {/* Grid Container */}
-            <div className="bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-6 min-h-[500px] relative select-none">
+            <div ref={containerRef} className="bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-6 min-h-[500px] relative">
                {loadingPreviews ? (
                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                    <Loader2 className="animate-spin mb-4" size={32} />
@@ -290,9 +380,15 @@ export const ReorderPDF: React.FC = () => {
                        layout
                        key={item.id}
                        ref={(el) => { if(el) itemsRef.current.set(item.id, el); }}
-                       onPointerDown={(e) => handleDragStart(e, item.id)}
+                       onPointerDown={(e) => handlePointerDown(e, item.id)}
+                       initial={false}
+                       animate={{ 
+                         opacity: activeId === item.id ? 0 : 1, // Hide original when dragging (gap effect)
+                         scale: 1
+                       }}
+                       transition={{ duration: 0.2 }}
                        className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 bg-white dark:bg-slate-800 shadow-sm
-                         ${activeId === item.id ? 'opacity-30 border-dashed border-slate-400' : 'border-slate-200 dark:border-slate-700 hover:border-blue-400'}
+                         border-slate-200 dark:border-slate-700 hover:border-blue-400
                          touch-none cursor-grab active:cursor-grabbing
                        `}
                      >
@@ -316,14 +412,14 @@ export const ReorderPDF: React.FC = () => {
       {/* Drag Overlay Portal */}
       {activeId && activeItem && createPortal(
         <div 
-          className="fixed pointer-events-none z-50 shadow-2xl rounded-lg overflow-hidden border-2 border-blue-500 bg-white dark:bg-slate-800"
+          className="fixed pointer-events-none z-50 rounded-lg overflow-hidden border-2 border-blue-500 bg-white dark:bg-slate-800 shadow-2xl"
           style={{ 
-            left: overlayPos.x, 
-            top: overlayPos.y, 
-            width: itemsRef.current.get(activeId)?.offsetWidth || 200, 
-            height: itemsRef.current.get(activeId)?.offsetHeight || 260,
+            left: overlayStyle.left, 
+            top: overlayStyle.top, 
+            width: overlayStyle.width, 
+            height: overlayStyle.height,
             transform: 'scale(1.05)',
-            boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3)'
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
           }}
         >
           <img src={activeItem.url} alt="" className="w-full h-full object-contain p-2" />

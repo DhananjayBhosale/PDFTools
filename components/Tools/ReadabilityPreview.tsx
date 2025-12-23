@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { ZoomIn, Check, AlertTriangle, Eye, X, Settings2, ArrowDown, HardDrive } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ZoomIn, ZoomOut, Check, AlertTriangle, Eye, X, Settings2, ArrowDown, HardDrive, RotateCcw, Plus, Minus } from 'lucide-react';
 import { AdaptiveConfig, generatePreviewPair, getInterpolatedConfig } from '../../services/pdfService';
 
 interface Props {
@@ -21,6 +21,10 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
   const [currentConfig, setCurrentConfig] = useState<AdaptiveConfig>(initialConfig);
   const [sizeEstimate, setSizeEstimate] = useState<{ estimatedSize: number, ratio: number, confidence: 'low' | 'high' } | null>(null);
   
+  // Zoom State
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const zoomOptions = [50, 75, 100, 150, 200];
+  
   // Heuristic State for "Fast Live Estimate"
   const [lastVerifiedSize, setLastVerifiedSize] = useState<number | null>(null);
   
@@ -32,6 +36,26 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
     const startDPI = initialConfig.projectedDPI;
     const approxSlider = Math.max(0, Math.min(100, ((startDPI - 43) / (144 - 43)) * 100));
     setSliderValue(Math.round(approxSlider));
+  }, []);
+
+  // Keyboard Shortcuts for Zoom
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          handleZoomIn();
+        } else if (e.key === '-') {
+          e.preventDefault();
+          handleZoomOut();
+        } else if (e.key === '0') {
+          e.preventDefault();
+          setZoomLevel(100);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const generate = async (cfg: AdaptiveConfig) => {
@@ -71,19 +95,8 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
     setCurrentConfig(newConfig);
 
     // 2. Fast Live Estimate (Heuristic Phase)
-    // If we have a previous verified estimate, we can extrapolate.
-    // Quality scales roughly linearly-ish for UI feedback purposes.
-    // Scale scales quadratically-ish (area).
-    // This doesn't need to be perfect, just directional feedback while sliding.
     if (lastVerifiedSize) {
-       // Heuristic: Roughly scale based on slider movement relative to 50
-       // This is purely visual feedback while the heavy calculation debounces
-       // We assume higher slider = larger file.
-       // We won't do complex math here, just keep the old value or slightly adjust
-       // Actually, keeping the old value with "Calculating..." is often better than a wrong guess.
-       // But user wants "Fast Live Estimate".
-       // Let's rely on the previous estimate but mark it as 'low' confidence or just stale.
-       // We'll update the 'loading' state which greys out the preview but keep the numbers visible.
+       // Heuristic logic can be added here
     }
 
     setLoading(true);
@@ -95,11 +108,30 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
     }, 200);
   };
 
+  const handleZoomIn = () => {
+    setZoomLevel(prev => {
+      const idx = zoomOptions.findIndex(z => z > prev);
+      return idx !== -1 ? zoomOptions[idx] : 200;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prev => {
+      // Find the largest option smaller than current
+      const opts = [...zoomOptions].reverse();
+      const next = opts.find(z => z < prev);
+      return next || 50;
+    });
+  };
+
   const dpi = currentConfig.projectedDPI;
   const qualityLabel = dpi >= 120 ? 'Good' : dpi >= 100 ? 'Fair' : 'Poor';
   const labelColor = dpi >= 120 ? 'text-green-500' : dpi >= 100 ? 'text-amber-500' : 'text-rose-500';
 
   const formatSize = (bytes: number) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
+
+  // Calculate dynamic width for zoom. Base width for 100% is approx 450px (max-w-md equivalent)
+  const contentWidth = 450 * (zoomLevel / 100);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -108,66 +140,103 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[90vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden relative z-10"
+        className="bg-white dark:bg-slate-900 w-full max-w-6xl h-[95vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden relative z-10"
       >
         {/* Header */}
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 z-20">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 z-20 shadow-sm">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Eye size={20} className="text-blue-500" /> Live Readability Preview
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Adjust quality to find the perfect balance. 100% Zoom.
+              Zoom in to check text clarity.
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
             <X size={20} />
           </button>
         </div>
 
         {/* Comparison Viewport */}
-        <div className="flex-1 overflow-auto bg-slate-100 dark:bg-black/50 p-8 relative flex gap-4 justify-center">
-          {images ? (
-            <>
-              {/* Original */}
-              <div className="flex-1 max-w-md flex flex-col gap-2 opacity-60 hover:opacity-100 transition-opacity">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Original</div>
-                <div className="relative rounded-lg overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700 bg-white">
-                  <img src={images.original} alt="Original" className="w-full h-auto" />
-                </div>
-              </div>
-
-              {/* Compressed */}
-              <div className="flex-1 max-w-md flex flex-col gap-2">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center flex items-center justify-center gap-2">
-                  Compressed Preview
-                  {loading && <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />}
-                </div>
-                <div className="relative rounded-lg overflow-hidden shadow-2xl border-2 border-blue-500 bg-white group">
-                  <img 
-                    src={images.compressed} 
-                    alt="Compressed" 
-                    className={`w-full h-auto image-rendering-auto transition-opacity duration-200 ${loading ? 'opacity-50 blur-[2px]' : 'opacity-100'}`}
-                    style={{ minHeight: '100%' }}
-                  />
-                  <div className={`absolute top-2 right-2 ${dpi < 100 ? 'bg-rose-600' : 'bg-blue-600'} text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1 shadow-lg`}>
-                    {dpi < 100 && <AlertTriangle size={10} />} {dpi} DPI
+        <div className="flex-1 overflow-auto bg-slate-100 dark:bg-black/50 p-8 relative">
+          
+          <div className="flex gap-4 justify-center min-w-fit mx-auto">
+            {images ? (
+              <>
+                {/* Original */}
+                <div className="flex flex-col gap-2 transition-all duration-200 ease-out" style={{ width: contentWidth }}>
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center sticky top-0 z-10 py-1 bg-slate-100/90 dark:bg-black/50 backdrop-blur-sm rounded">Original</div>
+                  <div className="relative rounded-lg overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700 bg-white">
+                    <img src={images.original} alt="Original" className="w-full h-auto block" />
                   </div>
                 </div>
-                <div className={`text-center text-xs font-bold ${labelColor} mt-1`}>
-                  Readability: {qualityLabel}
+
+                {/* Compressed */}
+                <div className="flex flex-col gap-2 transition-all duration-200 ease-out" style={{ width: contentWidth }}>
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center flex items-center justify-center gap-2 sticky top-0 z-10 py-1 bg-slate-100/90 dark:bg-black/50 backdrop-blur-sm rounded">
+                    Compressed
+                    {loading && <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />}
+                  </div>
+                  <div className="relative rounded-lg overflow-hidden shadow-2xl border-2 border-blue-500 bg-white group">
+                    <img 
+                      src={images.compressed} 
+                      alt="Compressed" 
+                      className={`w-full h-auto image-rendering-auto transition-opacity duration-200 ${loading ? 'opacity-50 blur-[2px]' : 'opacity-100'}`}
+                      style={{ minHeight: '100%' }}
+                    />
+                    <div className={`absolute top-2 right-2 ${dpi < 100 ? 'bg-rose-600' : 'bg-blue-600'} text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1 shadow-lg`}>
+                      {dpi < 100 && <AlertTriangle size={10} />} {dpi} DPI
+                    </div>
+                  </div>
+                  <div className={`text-center text-xs font-bold ${labelColor} mt-1`}>
+                    Readability: {qualityLabel}
+                  </div>
                 </div>
+              </>
+            ) : (
+               <div className="absolute inset-0 flex items-center justify-center text-slate-500 gap-2">
+                <ZoomIn className="animate-pulse" /> Generating preview...
               </div>
-            </>
-          ) : (
-             <div className="absolute inset-0 flex items-center justify-center text-slate-500 gap-2">
-              <ZoomIn className="animate-pulse" /> Generating preview...
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* Floating Zoom Controls */}
+          <div className="sticky bottom-4 left-0 right-0 flex justify-center pointer-events-none z-30">
+             <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-xl rounded-full p-1.5 flex items-center gap-1 pointer-events-auto">
+                <button 
+                  onClick={handleZoomOut}
+                  disabled={zoomLevel <= 50}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Zoom Out (Ctrl -)"
+                >
+                  <Minus size={16} />
+                </button>
+                <div className="px-2 w-16 text-center text-sm font-bold font-mono text-slate-700 dark:text-slate-200 tabular-nums">
+                  {zoomLevel}%
+                </div>
+                <button 
+                  onClick={handleZoomIn}
+                  disabled={zoomLevel >= 200}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Zoom In (Ctrl +)"
+                >
+                  <Plus size={16} />
+                </button>
+                <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1" />
+                <button 
+                  onClick={() => setZoomLevel(100)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors"
+                  title="Reset Zoom (Ctrl 0)"
+                >
+                  <RotateCcw size={14} />
+                </button>
+             </div>
+          </div>
+
         </div>
 
         {/* Interactive Controls Footer */}
-        <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col lg:flex-row items-center justify-between gap-6">
+        <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col lg:flex-row items-center justify-between gap-6 relative z-20">
           
           {/* Slider Control */}
           <div className="w-full lg:w-1/2 flex flex-col gap-2">
