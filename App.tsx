@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HashRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Header } from './components/Layout/Header';
@@ -19,6 +20,7 @@ import { OCRPDF } from './components/Tools/OCRPDF';
 import { EditPDF } from './components/Tools/EditPDF';
 import { SignPDF } from './components/Tools/SignPDF';
 import { ComparePDF } from './components/Tools/ComparePDF';
+import { PrivacyPolicy } from './components/Pages/PrivacyPolicy';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Wrapper for animated routes
@@ -60,6 +62,9 @@ const AnimatedRoutes = () => {
           <Route path="/flatten" element={<FlattenPDF />} />
           <Route path="/compare" element={<ComparePDF />} />
           <Route path="/ocr" element={<OCRPDF />} />
+          
+          {/* Pages */}
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           
           <Route path="*" element={<Dashboard />} />
         </Routes>

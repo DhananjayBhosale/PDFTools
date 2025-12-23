@@ -1,9 +1,10 @@
+
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FileStack, Scissors, Image as ImageIcon, RotateCw, Shield, 
   FileText, Layers, Lock, FileSearch, ArrowRight, Search, 
-  FileImage, PenTool, Eraser, Move, Unlock, Maximize, GitCompare, ScanText, FileSignature
+  FileImage, PenTool, Eraser, Move, Unlock, Maximize, GitCompare, ScanText, FileSignature, Github, HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ToolRoute } from '../../types';
@@ -362,12 +363,51 @@ export const Dashboard = () => {
         )}
       </AnimatePresence>
 
-      {/* Privacy Footer */}
-      <div className="mt-20 text-center border-t border-slate-200 dark:border-slate-800 pt-8">
-        <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
-          <Shield size={14} className="text-green-500" />
-          Files stay on your device. No data is ever uploaded to our servers.
-        </p>
+      {/* Footer / FAQ */}
+      <div className="mt-20 border-t border-slate-200 dark:border-slate-800 pt-10 pb-6">
+        <div className="grid md:grid-cols-2 gap-8 mb-12">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="text-green-500" size={20} />
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg">Privacy First</h3>
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-4">
+              ZenPDF runs <strong>100% locally</strong> in your browser. 
+              Your files never leave your device and are never uploaded to any server. 
+              You can even turn off your internet and use it offline.
+            </p>
+          </div>
+          
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <HelpCircle className="text-blue-500" size={20} />
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg">About This Project</h3>
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
+              This application is currently <strong>experimental</strong>. 
+              Features are active but may receive frequent updates.
+              <br/>
+              <span className="block mt-2">
+                Feedback is welcome on Twitter <a href="https://twitter.com/dhananjay_Tech" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 font-medium transition-colors">@dhananjay_Tech</a>.
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center gap-6 pt-6">
+           <a 
+             href="https://github.com/DhananjayBhosale/PDFTools" 
+             target="_blank" 
+             rel="noopener noreferrer" 
+             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300"
+           >
+             <Github size={18}/> View Source on GitHub
+           </a>
+           
+           <p className="text-xs text-slate-400 dark:text-slate-600">
+              MIT License • Built with React & PDF-Lib
+           </p>
+        </div>
       </div>
 
     </div>

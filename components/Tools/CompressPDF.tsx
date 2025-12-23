@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
@@ -7,6 +8,27 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import { ReadabilityPreview } from './ReadabilityPreview';
+import { SEOHead } from '../SEO/SEOHead';
+import { FAQ, FAQItem } from '../UI/FAQ';
+
+const faqItems: FAQItem[] = [
+  {
+    question: "Does compressing reduce quality?",
+    answer: "We use adaptive compression to balance size and quality. You can preview the result and choose between Extreme, Recommended, or High Quality modes."
+  },
+  {
+    question: "Are my files uploaded to a server?",
+    answer: "No. ZenPDF is a client-side tool. Compression happens entirely within your web browser using WebAssembly. Your files are private."
+  },
+  {
+    question: "Why is the reduction 0%?",
+    answer: "If your PDF is already highly optimized, further compression might degrade quality without saving space. In this case, we keep the original file."
+  },
+  {
+    question: "Can I compress text-heavy PDFs?",
+    answer: "Yes, our algorithm detects text-heavy documents and optimizes font embedding and structure rather than just downsampling images."
+  }
+];
 
 export const CompressPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
@@ -147,6 +169,11 @@ export const CompressPDF: React.FC = () => {
 
   return (
     <div className="max-w-3xl mx-auto py-12 px-4 relative">
+      <SEOHead 
+        title="Compress PDF - Reduce File Size Online | ZenPDF"
+        description="Reduce PDF file size without losing quality. Adaptive compression directly in your browser. Private, secure, and offline-ready."
+      />
+
       <div className="mb-8">
          <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Compress PDF</h1>
@@ -333,7 +360,7 @@ export const CompressPDF: React.FC = () => {
                             <div>
                                <div className={`text-sm font-bold flex items-center gap-2 ${isLowDPI ? 'text-amber-800 dark:text-amber-200' : 'text-slate-700 dark:text-slate-200'}`}>
                                   Preview & Tune Quality
-                               </div>
+                                </div>
                                <div className="text-xs opacity-70 dark:text-slate-400 font-medium">
                                   {isLowDPI ? 'Quality looks low. Check before saving.' : 'Verify readability before compressing.'}
                                </div>
@@ -395,6 +422,10 @@ export const CompressPDF: React.FC = () => {
           />
         )}
       </AnimatePresence>
+
+      <div className="mt-12">
+        <FAQ items={faqItems} />
+      </div>
     </div>
   );
 };

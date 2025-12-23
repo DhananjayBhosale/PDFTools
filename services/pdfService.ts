@@ -172,8 +172,6 @@ export const createPDFFromImages = async (
     const availableWidth = pageWidth - (layout.margin * 2);
     const availableHeight = pageHeight - (layout.margin * 2);
 
-    // Calculate dimensions based on layout preference
-    // Defaulting to "fit within A4" logic for simple reordering flow
     const scale = Math.min(availableWidth / width, availableHeight / height);
     const displayWidth = width * scale;
     const displayHeight = height * scale;
@@ -190,6 +188,70 @@ export const createPDFFromImages = async (
   }
   return pdfDoc.save();
 };
+
+// --- NEW LAYOUT BASED PDF CREATION ---
+export interface PDFPageLayout {
+  width: number;
+  height: number;
+  elements: PDFImageElement[];
+}
+export interface PDFImageElement {
+  file: File;
+  x: number; // Percentage 0-1
+  y: number; // Percentage 0-1
+  width: number; // Percentage 0-1
+  height: number; // Percentage 0-1
+}
+
+export const createPDFFromLayout = async (pages: PDFPageLayout[]): Promise<Uint8Array> => {
+  const pdfDoc = await PDFDocument.create();
+  
+  // Cache embedded images to avoid duplicating bytes in PDF
+  const imageCache = new Map<string, any>();
+
+  for (const p of pages) {
+    // Default to A4 if width/height not provided, but usually we use standard points
+    // A4 = 595.28 x 841.89
+    const page = pdfDoc.addPage([595.28, 841.89]);
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+
+    for (const el of p.elements) {
+      try {
+        let image = imageCache.get(el.file.name);
+        if (!image) {
+          const arrayBuffer = await readFileAsArrayBuffer(el.file);
+          if (el.file.type === 'image/jpeg') {
+            image = await pdfDoc.embedJpg(arrayBuffer);
+          } else if (el.file.type === 'image/png') {
+            image = await pdfDoc.embedPng(arrayBuffer);
+          }
+          if (image) imageCache.set(el.file.name, image);
+        }
+
+        if (image) {
+           // Calculations:
+           // UI X/Y is Top-Left %
+           // PDF X is Left, Y is Bottom
+           const pdfX = el.x * pageWidth;
+           const pdfY = pageHeight - (el.y * pageHeight); // Bottom Y
+           const pdfW = el.width * pageWidth;
+           const pdfH = el.height * pageHeight;
+
+           page.drawImage(image, {
+             x: pdfX,
+             y: pdfY - pdfH, // Adjust for Top-Left anchor
+             width: pdfW,
+             height: pdfH
+           });
+        }
+      } catch (e) {
+        console.error("Failed to embed image", e);
+      }
+    }
+  }
+  return pdfDoc.save();
+};
+
 
 export const splitPDF = async (file: File): Promise<Blob> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
@@ -371,10 +433,8 @@ export const savePDFWithAnnotations = async (file: File, elements: EditorElement
     const page = pages[el.pageIndex];
     const { width: pageWidth, height: pageHeight } = page.getSize();
 
-    // Coordinate Conversion (UI % -> PDF Points)
-    // PDF origin is Bottom-Left. UI origin is Top-Left.
     const pdfX = el.x * pageWidth;
-    const pdfY = pageHeight - (el.y * pageHeight); // Invert Y
+    const pdfY = pageHeight - (el.y * pageHeight);
 
     if (el.type === 'image') {
        try {
@@ -385,16 +445,9 @@ export const savePDFWithAnnotations = async (file: File, elements: EditorElement
          const w = (el.width || 0.2) * pageWidth;
          const h = (el.height || 0.2) * pageHeight;
          
-         // pdfY is the top-left of the image in UI terms, but drawImage takes bottom-left usually?
-         // No, pdf-lib drawImage x/y is the bottom-left corner of the image.
-         // In UI, (x,y) is Top-Left. 
-         // So if UI Y is 0.2 (20% down), PDF Y is 80% up.
-         // If we draw at 80% up, the image extends UP from there? No, standard is it extends up and right.
-         // So we need to subtract height from pdfY to get the bottom-left corner.
-         
          page.drawImage(image, {
            x: pdfX,
-           y: pdfY - h, // Shift down by height to position top-left at pdfY
+           y: pdfY - h, 
            width: w,
            height: h,
            rotate: degrees(el.rotation || 0),
@@ -406,15 +459,13 @@ export const savePDFWithAnnotations = async (file: File, elements: EditorElement
        const font = fonts[el.fontFamily as keyof typeof fonts] || fonts.Helvetica;
        const size = el.fontSize || 12;
        
-       // Handle multiline
        const lines = el.content.split('\n');
        const lineHeight = size * 1.2;
        
-       // Draw each line
        lines.forEach((line, i) => {
          page.drawText(line, {
            x: pdfX,
-           y: pdfY - (size) - (i * lineHeight), // Adjust for baseline roughly
+           y: pdfY - (size) - (i * lineHeight), 
            size: size,
            font: font,
            color: el.color ? hexToRgb(el.color) : rgb(0, 0, 0),
@@ -427,7 +478,7 @@ export const savePDFWithAnnotations = async (file: File, elements: EditorElement
   return pdfDoc.save();
 };
 
-// --- COMPRESSION SERVICE ---
+// --- COMPRESSION & SIGNATURE IMPLEMENTATION ---
 
 export type CompressionLevel = 'extreme' | 'recommended' | 'less';
 
@@ -437,87 +488,85 @@ export interface AdaptiveConfig {
   projectedDPI: number;
 }
 
+export interface SignaturePlacement {
+  pageIndex: number;
+  dataUrl: string;
+  x: number;
+  y: number;
+  width: number;
+  aspectRatio: number;
+}
+
 export const getAdaptiveConfig = (level: CompressionLevel, isTextHeavy: boolean): AdaptiveConfig => {
-  if (level === 'extreme') {
-    return {
-      scale: isTextHeavy ? 1.0 : 0.6, 
-      quality: 0.5,
-      projectedDPI: isTextHeavy ? 72 : 43
-    };
-  } else if (level === 'less') {
-    return {
-      scale: 2.0,
-      quality: 0.9,
-      projectedDPI: 144
-    };
-  } else {
-    // Recommended
-    return {
-      scale: isTextHeavy ? 1.5 : 1.0,
-      quality: 0.7,
-      projectedDPI: isTextHeavy ? 108 : 72
-    };
-  }
+  const dpiMap = {
+    extreme: 72,
+    recommended: 144,
+    less: 200
+  };
+  
+  const targetDPI = dpiMap[level];
+  const scale = Math.min(1.0, targetDPI / 144);
+  
+  return {
+    scale: scale,
+    quality: level === 'extreme' ? 0.5 : level === 'recommended' ? 0.75 : 0.9,
+    projectedDPI: targetDPI
+  };
 };
 
 export const getInterpolatedConfig = (sliderValue: number, isTextHeavy: boolean): AdaptiveConfig => {
-  const minScale = 0.5;
-  const maxScale = 2.5;
-  const scale = minScale + (sliderValue / 100) * (maxScale - minScale);
-  const quality = 0.3 + (sliderValue / 100) * 0.7;
+  const minDPI = 72;
+  const maxDPI = 300;
+  const dpi = minDPI + (sliderValue / 100) * (maxDPI - minDPI);
+  
   return {
-    scale,
-    quality,
-    projectedDPI: Math.round(scale * 72)
+    scale: Math.min(1.0, dpi / 144),
+    quality: 0.5 + (sliderValue / 200),
+    projectedDPI: Math.round(dpi)
   };
 };
 
 export const calculateTargetSize = (originalSize: number, level: CompressionLevel, isTextHeavy: boolean): number => {
-  const factors = {
-    extreme: isTextHeavy ? 0.4 : 0.2,
-    recommended: isTextHeavy ? 0.7 : 0.5,
-    less: 0.9
-  };
-  return Math.round(originalSize * factors[level]);
+   const ratio = level === 'extreme' ? 0.3 : level === 'recommended' ? 0.6 : 0.9;
+   return Math.round(originalSize * ratio);
 };
 
-export const generatePreviewPair = async (file: File, config: AdaptiveConfig): Promise<{ original: string; compressed: string; metrics: { estimatedTotalSize: number } }> => {
+export const generatePreviewPair = async (file: File, config: AdaptiveConfig) => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
-  const loadingTask = pdfjs.getDocument(getSafeBuffer(arrayBuffer));
-  const pdf = await loadingTask.promise;
+  const pdf = await pdfjs.getDocument(getSafeBuffer(arrayBuffer)).promise;
   const page = await pdf.getPage(1);
   
-  const viewportOrig = page.getViewport({ scale: 2.0 });
-  const canvasOrig = document.createElement('canvas');
-  canvasOrig.width = viewportOrig.width;
-  canvasOrig.height = viewportOrig.height;
-  const ctxOrig = canvasOrig.getContext('2d');
-  if(ctxOrig) {
-      ctxOrig.fillStyle = '#ffffff';
-      ctxOrig.fillRect(0,0, canvasOrig.width, canvasOrig.height);
-      await page.render({ canvasContext: ctxOrig, viewport: viewportOrig }).promise;
-  }
-  const originalUrl = canvasOrig.toDataURL('image/png');
-
-  const viewportComp = page.getViewport({ scale: config.scale });
-  const canvasComp = document.createElement('canvas');
-  canvasComp.width = viewportComp.width;
-  canvasComp.height = viewportComp.height;
-  const ctxComp = canvasComp.getContext('2d');
-  if(ctxComp) {
-      ctxComp.fillStyle = '#ffffff';
-      ctxComp.fillRect(0,0, canvasComp.width, canvasComp.height);
-      await page.render({ canvasContext: ctxComp, viewport: viewportComp }).promise;
+  const vpOrig = page.getViewport({ scale: 1.5 });
+  const cvsOrig = document.createElement('canvas');
+  cvsOrig.width = vpOrig.width;
+  cvsOrig.height = vpOrig.height;
+  const ctxOrig = cvsOrig.getContext('2d');
+  if (ctxOrig) {
+     ctxOrig.fillStyle = 'white';
+     ctxOrig.fillRect(0,0, cvsOrig.width, cvsOrig.height);
+     await page.render({ canvasContext: ctxOrig, viewport: vpOrig }).promise;
   }
   
-  const compressedUrl = canvasComp.toDataURL('image/jpeg', config.quality);
-  const pageSizeBytes = (compressedUrl.length - 22) * 0.75; 
-  const estimatedTotalSize = pageSizeBytes * pdf.numPages;
-
+  const vpComp = page.getViewport({ scale: config.scale });
+  const cvsComp = document.createElement('canvas');
+  cvsComp.width = vpComp.width;
+  cvsComp.height = vpComp.height;
+  const ctxComp = cvsComp.getContext('2d');
+  if (ctxComp) {
+      ctxComp.fillStyle = 'white';
+      ctxComp.fillRect(0,0, cvsComp.width, cvsComp.height);
+      await page.render({ canvasContext: ctxComp, viewport: vpComp }).promise;
+  }
+  
+  const original = cvsOrig.toDataURL('image/jpeg', 0.9);
+  const compressed = cvsComp.toDataURL('image/jpeg', config.quality);
+  
+  const estSize = Math.round(file.size * (compressed.length / original.length));
+  
   return {
-    original: originalUrl,
-    compressed: compressedUrl,
-    metrics: { estimatedTotalSize }
+      original,
+      compressed,
+      metrics: { estimatedTotalSize: estSize }
   };
 };
 
@@ -527,87 +576,95 @@ export const compressPDFAdaptive = async (
   onProgress: (p: number) => void,
   overrideSafety: boolean = false,
   customConfig?: AdaptiveConfig
-): Promise<{ status: 'success' | 'blocked'; data: Uint8Array; meta: { compressedSize: number; projectedDPI: number; strategyUsed: string } }> => {
+) => {
+  const config = customConfig || getAdaptiveConfig(level, false);
   
-  const analysis = await analyzePDF(file);
-  const config = customConfig || getAdaptiveConfig(level, analysis.isTextHeavy);
-
-  if (!overrideSafety && config.projectedDPI < 70 && analysis.isTextHeavy) {
-     if (level === 'extreme') return { status: 'blocked', data: new Uint8Array(0), meta: { compressedSize: 0, projectedDPI: 0, strategyUsed: '' } };
+  // Implemented safety check to match usage in CompressPDF.tsx
+  // This avoids processing if DPI is too low, unless safety is overridden
+  if (!overrideSafety && config.projectedDPI < 72) {
+      return {
+          data: new Uint8Array(0),
+          meta: {
+              compressedSize: 0,
+              projectedDPI: config.projectedDPI,
+              strategyUsed: 'Blocked (Low DPI)'
+          },
+          status: 'blocked' as const
+      };
   }
 
   const arrayBuffer = await readFileAsArrayBuffer(file);
-  const loadingTask = pdfjs.getDocument(getSafeBuffer(arrayBuffer));
-  const pdf = await loadingTask.promise;
+  const pdf = await pdfjs.getDocument(getSafeBuffer(arrayBuffer)).promise;
   const numPages = pdf.numPages;
-
-  const newPdfDoc = await PDFDocument.create();
+  const newPdf = await PDFDocument.create();
 
   for (let i = 1; i <= numPages; i++) {
+    onProgress((i / numPages) * 90);
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: config.scale });
+    const vp = page.getViewport({ scale: config.scale * 1.5 });
     const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) continue;
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0,0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
     
-    const context = canvas.getContext('2d');
-    if (!context) continue;
+    const imgData = canvas.toDataURL('image/jpeg', config.quality);
+    const imgBytes = await fetch(imgData).then(r => r.arrayBuffer());
     
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    const embed = await newPdf.embedJpg(imgBytes);
     
-    await page.render({ canvasContext: context, viewport }).promise;
-    
-    const imgDataUrl = canvas.toDataURL('image/jpeg', config.quality);
-    const embeddedImage = await newPdfDoc.embedJpg(imgDataUrl);
-    const originalViewport = page.getViewport({ scale: 1.0 });
-    
-    const newPage = newPdfDoc.addPage([originalViewport.width, originalViewport.height]);
-    newPage.drawImage(embeddedImage, {
-      x: 0,
-      y: 0,
-      width: originalViewport.width,
-      height: originalViewport.height,
+    const origVp = page.getViewport({ scale: 1.0 });
+    const p = newPdf.addPage([origVp.width, origVp.height]);
+    p.drawImage(embed, {
+        x: 0, 
+        y: 0,
+        width: origVp.width,
+        height: origVp.height
     });
-    
-    onProgress(Math.round((i / numPages) * 90));
   }
 
-  const pdfBytes = await newPdfDoc.save();
-  onProgress(100);
-
+  const saved = await newPdf.save();
   return {
-    status: 'success',
-    data: pdfBytes,
-    meta: {
-      compressedSize: pdfBytes.byteLength,
-      projectedDPI: config.projectedDPI,
-      strategyUsed: `Rasterization (Scale ${config.scale.toFixed(1)}, Q${config.quality.toFixed(1)})`
-    }
+     data: saved,
+     meta: {
+        compressedSize: saved.byteLength,
+        projectedDPI: config.projectedDPI,
+        strategyUsed: 'Adaptive Rasterization'
+     },
+     status: 'success' as const
   };
 };
 
-// --- SIGNATURE SUPPORT ---
-export interface SignaturePlacement {
-  id: string;
-  pageIndex: number;
-  dataUrl: string; 
-  x: number; 
-  y: number; 
-  width: number; 
-  aspectRatio: number; 
-}
-
-export const applySignaturesToPDF = async (file: File, signatures: SignaturePlacement[]): Promise<Uint8Array> => {
-  const elements: EditorElement[] = signatures.map(s => ({
-    id: s.id,
-    type: 'image',
-    pageIndex: s.pageIndex,
-    x: s.x,
-    y: s.y,
-    width: s.width,
-    height: s.width / s.aspectRatio,
-    content: s.dataUrl
-  }));
-  return savePDFWithAnnotations(file, elements);
+export const applySignaturesToPDF = async (file: File, signatures: SignaturePlacement[]) => {
+   const arrayBuffer = await readFileAsArrayBuffer(file);
+   const pdfDoc = await PDFDocument.load(arrayBuffer);
+   
+   for (const sig of signatures) {
+      if (sig.pageIndex < 0 || sig.pageIndex >= pdfDoc.getPageCount()) continue;
+      
+      let image;
+      if (sig.dataUrl.startsWith('data:image/png')) {
+          image = await pdfDoc.embedPng(sig.dataUrl);
+      } else {
+          image = await pdfDoc.embedJpg(sig.dataUrl);
+      }
+      
+      const page = pdfDoc.getPage(sig.pageIndex);
+      const { width, height } = page.getSize();
+      
+      const targetW = width * sig.width;
+      const targetH = targetW / sig.aspectRatio;
+      
+      page.drawImage(image, {
+          x: width * sig.x,
+          y: height - (height * sig.y) - targetH,
+          width: targetW,
+          height: targetH
+      });
+   }
+   
+   return pdfDoc.save();
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
@@ -7,6 +8,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import { PageThumbnail } from '../UI/PageThumbnail';
+import { SEOHead } from '../SEO/SEOHead';
+import { FAQ, FAQItem } from '../UI/FAQ';
+
+const faqItems: FAQItem[] = [
+  {
+    question: "Can I extract specific pages?",
+    answer: "Yes, you can select individual pages to extract into a new PDF, or split the entire document into separate single-page files."
+  },
+  {
+    question: "Is there a page limit?",
+    answer: "ZenPDF can handle large documents. However, for very large files (500+ pages), performance depends on your device's memory since processing is local."
+  },
+  {
+    question: "Does it work on Mac and Windows?",
+    answer: "Yes, ZenPDF works in any modern web browser (Chrome, Edge, Firefox, Safari) on any operating system, including mobile."
+  }
+];
 
 export const SplitPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
@@ -23,9 +41,6 @@ export const SplitPDF: React.FC = () => {
         .then(urls => {
           setPreviews(urls);
           setLoadingPreviews(false);
-          // Default select all? Or none? Let's select none to encourage interaction, 
-          // or all if they want to just split everything. 
-          // Let's start with empty so they can pick.
           setSelectedPages([]);
         })
         .catch(err => {
@@ -109,6 +124,11 @@ export const SplitPDF: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto py-12 px-4">
+      <SEOHead 
+        title="Split PDF Pages - Extract & Separate Online | ZenPDF"
+        description="Split PDF files or extract specific pages securely in your browser. No server uploads. Free offline PDF splitter."
+      />
+
       <div className="mb-8">
          <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Split & Extract PDF</h1>
@@ -204,6 +224,10 @@ export const SplitPDF: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <div className="mt-12">
+        <FAQ items={faqItems} />
+      </div>
     </div>
   );
 };

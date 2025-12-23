@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ThemeToggle } from './ThemeToggle';
@@ -14,6 +15,9 @@ export const Header: React.FC = () => {
           </div>
           <span className="font-bold text-lg tracking-tight text-slate-900 dark:text-white group-hover:opacity-80 transition-opacity">
             ZenPDF
+          </span>
+          <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800">
+            BETA
           </span>
         </Link>
         

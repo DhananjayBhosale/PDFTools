@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
 import { ZoomControls } from '../UI/ZoomControls';
 import { useZoom } from '../../hooks/useZoom';
+import { SEOHead } from '../SEO/SEOHead';
 
 export const PDFToImage: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
@@ -108,6 +109,11 @@ export const PDFToImage: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4 h-[calc(100vh-80px)] flex flex-col">
+      <SEOHead 
+        title="PDF to JPG Converter - Export Pages to Images | ZenPDF"
+        description="Convert PDF pages to high-quality JPG or PNG images. Extract images locally. Secure and fast."
+      />
+
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
          <div>
             <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back</Link>
