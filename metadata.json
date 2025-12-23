@@ -1,0 +1,5 @@
+{
+  "name": "ZenPDF",
+  "description": "A privacy-first, fully local PDF suite. Merge, split, compress, and edit PDFs directly in your browser without any server uploads.",
+  "requestFramePermissions": []
+}
