@@ -44,7 +44,7 @@ const tools: ToolRoute[] = [
   },
   { 
     path: '/edit', 
-    label: 'Edit PDF', 
+    label: 'Edit PDF (BETA)', 
     description: 'Add text, shapes, and annotations.', 
     icon: PenTool, 
     color: 'text-pink-500', 
@@ -206,6 +206,9 @@ const HeroCard: React.FC<{ tool: ToolRoute }> = ({ tool }) => (
     </div>
     
     <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-2">{tool.label}</h3>
+    {tool.path === '/edit' && (
+      <p className="font-bold text-xs text-orange-500 mb-2">LIMITED FUNCTIONALITY</p>
+    )}
     <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{tool.description}</p>
   </Link>
 );
