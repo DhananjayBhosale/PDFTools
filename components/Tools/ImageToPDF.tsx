@@ -82,7 +82,8 @@ const DraggableResizableImage: React.FC<{
         : startRef.current.w - dx;
       
       const newW = newW_px / pageWidth_px;
-      const newH = newW / element.aspectRatio;
+      const newH_px = newW_px / element.aspectRatio;
+      const newH = newH_px / pageHeight_px;
       
       let newX = resizingHandle.includes('right') 
         ? initialX 
@@ -368,17 +369,29 @@ export const ImageToPDF: React.FC = () => {
       await new Promise<void>(r => { img.onload = () => r(); });
       
       const aspect = img.width / img.height;
-      // Default: Center, 80% width
+      const pageAspect = 210 / 297;
+      
+      let initialWidth = 0.8;
+      let initialHeight = (initialWidth * pageAspect) / aspect;
+      
+      if (initialHeight > 0.8) {
+         initialHeight = 0.8;
+         initialWidth = (initialHeight * aspect) / pageAspect;
+      }
+      
+      const x = (1 - initialWidth) / 2;
+      const y = (1 - initialHeight) / 2;
+
       return {
         id: uuidv4(),
         elements: [{
           id: uuidv4(),
           file: fileToUse,
           previewUrl: url,
-          x: 0.1,
-          y: 0.1,
-          width: 0.8,
-          height: 0.8 / aspect,
+          x,
+          y,
+          width: initialWidth,
+          height: initialHeight,
           aspectRatio: aspect
         }]
       };
@@ -589,14 +602,24 @@ export const ImageToPDF: React.FC = () => {
                                              img.src = url;
                                              await new Promise<void>(r => { img.onload = () => r(); });
                                              const aspect = img.width / img.height;
+                                             const pageAspect = 210 / 297;
+                                             
+                                             let initialWidth = 0.4;
+                                             let initialHeight = (initialWidth * pageAspect) / aspect;
+                                             
+                                             if (initialHeight > 0.4) {
+                                                initialHeight = 0.4;
+                                                initialWidth = (initialHeight * aspect) / pageAspect;
+                                             }
+                                             
                                              return {
                                                 id: uuidv4(),
                                                 file: fileToUse,
                                                 previewUrl: url,
                                                 x: 0.1,
                                                 y: 0.1,
-                                                width: 0.4,
-                                                height: 0.4 / aspect,
+                                                width: initialWidth,
+                                                height: initialHeight,
                                                 aspectRatio: aspect
                                              };
                                           }));
