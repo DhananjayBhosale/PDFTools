@@ -108,34 +108,47 @@ export const PDFToImage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4 h-[calc(100vh-80px)] flex flex-col">
+    <div className="w-full h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <SEOHead 
         title="PDF to JPG Converter - Export Pages to Images | ZenPDF"
         description="Convert PDF pages to high-quality JPG or PNG images. Extract images locally. Secure and fast."
       />
 
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-         <div>
-            <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back</Link>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">PDF to Image</h1>
-         </div>
-         {file && (
-            <button onClick={() => { setFile(null); setPdfDoc(null); setPreview(null); }} className="px-3 py-1.5 text-sm rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 flex items-center gap-2">
-               <Undo2 size={14} /> Start Over
-            </button>
-         )}
-      </div>
+       <div className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 flex items-center justify-between flex-shrink-0 z-30 shadow-sm">
+          <div className="flex items-center gap-4">
+             <Link to="/" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500">
+                <Undo2 size={20} />
+             </Link>
+             <div>
+                <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-none">PDF to Image</h1>
+                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider font-bold">Export Pages</p>
+             </div>
+          </div>
+          {file && (
+             <div className="flex items-center gap-3">
+                <button onClick={() => { setFile(null); setPdfDoc(null); setPreview(null); }} className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-4 py-2 rounded-lg text-sm font-bold transition-colors">
+                   Start Over
+                </button>
+                <button onClick={handleExport} disabled={status.isProcessing || !preview} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50">
+                   {status.isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />} 
+                   <span>Convert {pdfDoc?.numPages} Pages</span>
+                </button>
+             </div>
+          )}
+       </div>
 
-      <AnimatePresence mode="wait">
-        {!file ? (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="m-auto w-full max-w-xl">
-             <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to convert" />
-          </motion.div>
-        ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
+       <AnimatePresence mode="wait">
+         {!file ? (
+           <div className="flex-1 flex items-center justify-center p-6">
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-xl">
+                 <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to convert to images" />
+              </motion.div>
+           </div>
+         ) : (
+           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex overflow-hidden">
              
              {/* LEFT PANEL */}
-             <div className="w-full lg:w-80 flex flex-col gap-4 flex-shrink-0">
+             <div className="w-full md:w-80 flex flex-col gap-4 flex-shrink-0 overflow-y-auto custom-scrollbar h-full">
                 <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
                    <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold border-b border-slate-100 dark:border-slate-800 pb-3">
                       <Settings2 size={18} className="text-blue-500"/> Export Settings

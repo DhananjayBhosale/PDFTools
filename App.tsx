@@ -90,14 +90,23 @@ const AnimatedRoutes = () => {
 const App: React.FC = () => {
   return (
     <Router>
-      <div className="min-h-screen flex flex-col font-sans">
-        <Background />
-        <Header />
-        <main className="flex-1 w-full max-w-7xl mx-auto flex flex-col">
-           <AnimatedRoutes />
-        </main>
-      </div>
+      <AppContent />
     </Router>
+  );
+};
+
+const AppContent: React.FC = () => {
+  const location = useLocation();
+  const isFullScreenTool = ['/image-to-pdf', '/pdf-to-jpg'].includes(location.pathname);
+
+  return (
+    <div className="min-h-screen flex flex-col font-sans">
+      <Background />
+      {!isFullScreenTool && <Header />}
+      <main className="flex-1 w-full flex flex-col">
+         <AnimatedRoutes />
+      </main>
+    </div>
   );
 };
 
