@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { ProcessingStatus } from '../../types';
 import { createPDFFromLayout, PDFPageLayout, PDFImageElement } from '../../services/pdfService';
@@ -50,17 +50,19 @@ interface PageData {
 
 const DraggableResizableImage: React.FC<{ 
    element: ImageElement, 
+   pageId: string,
    containerRef: React.RefObject<HTMLDivElement>,
    onUpdate: (u: Partial<ImageElement>) => void,
    onRemove: () => void,
-   zoom: number
-}> = ({ element, containerRef, onUpdate, onRemove, zoom }) => {
-  const [isDragging, setIsDragging] = useState(false);
+   onDragStart: (e: React.PointerEvent, pageId: string, element: ImageElement, containerRef: React.RefObject<HTMLDivElement>) => void,
+   zoom: number,
+   isDraggingGlobally: boolean
+}> = ({ element, pageId, containerRef, onUpdate, onRemove, onDragStart, zoom, isDraggingGlobally }) => {
   const [resizingHandle, setResizingHandle] = useState<string | null>(null);
   const startRef = useRef({ x: 0, y: 0, ex: 0, ey: 0, w: 0, h: 0 });
 
-  useEffect(() => {
-    if (!isDragging && !resizingHandle) return;
+  useLayoutEffect(() => {
+    if (!resizingHandle) return;
 
     const handlePointerMove = (e: PointerEvent) => {
       if (!containerRef.current) return;
@@ -68,46 +70,37 @@ const DraggableResizableImage: React.FC<{
       const pageWidth_px = rect.width;
       const pageHeight_px = rect.height;
 
-      if (isDragging) {
-        const dx = e.clientX - startRef.current.x;
-        const dy = e.clientY - startRef.current.y;
-        const nx = (startRef.current.ex + dx) / pageWidth_px;
-        const ny = (startRef.current.ey + dy) / pageHeight_px;
-        onUpdate({ x: nx, y: ny });
-      } else if (resizingHandle) {
-        const dx = e.clientX - startRef.current.x;
-        
-        const initialW = startRef.current.w / pageWidth_px;
-        const initialH = startRef.current.h / pageHeight_px;
-        const initialX = startRef.current.ex / pageWidth_px;
-        const initialY = startRef.current.ey / pageHeight_px;
+      const dx = e.clientX - startRef.current.x;
+      
+      const initialW = startRef.current.w / pageWidth_px;
+      const initialH = startRef.current.h / pageHeight_px;
+      const initialX = startRef.current.ex / pageWidth_px;
+      const initialY = startRef.current.ey / pageHeight_px;
 
-        let newW_px = resizingHandle.includes('right') 
-          ? startRef.current.w + dx 
-          : startRef.current.w - dx;
+      let newW_px = resizingHandle.includes('right') 
+        ? startRef.current.w + dx 
+        : startRef.current.w - dx;
+      
+      const newW = newW_px / pageWidth_px;
+      const newH = newW / element.aspectRatio;
+      
+      let newX = resizingHandle.includes('right') 
+        ? initialX 
+        : (startRef.current.ex + dx) / pageWidth_px;
         
-        const newW = newW_px / pageWidth_px;
-        const newH = newW / element.aspectRatio;
-        
-        let newX = resizingHandle.includes('right') 
-          ? initialX 
-          : (startRef.current.ex + dx) / pageWidth_px;
-          
-        let newY = resizingHandle.includes('top') 
-          ? initialY - (newH - initialH) 
-          : initialY;
+      let newY = resizingHandle.includes('top') 
+        ? initialY - (newH - initialH) 
+        : initialY;
 
-        onUpdate({ 
-           x: Math.max(0, newX), 
-           y: Math.max(0, newY),
-           width: Math.max(0.05, newW), 
-           height: Math.max(0.05, newH) 
-        });
-      }
+      onUpdate({ 
+         x: Math.max(0, newX), 
+         y: Math.max(0, newY),
+         width: Math.max(0.05, newW), 
+         height: Math.max(0.05, newH) 
+      });
     };
 
     const handlePointerUp = () => {
-      setIsDragging(false);
       setResizingHandle(null);
     };
 
@@ -117,20 +110,11 @@ const DraggableResizableImage: React.FC<{
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isDragging, resizingHandle, onUpdate, zoom, element.aspectRatio, element.height, element.x, element.y, containerRef]);
+  }, [resizingHandle, onUpdate, zoom, element.aspectRatio, element.height, element.x, element.y, containerRef]);
 
   const handleDown = (e: React.PointerEvent) => {
      e.stopPropagation();
-     setIsDragging(true);
-     const rect = containerRef.current!.getBoundingClientRect();
-     const pageWidth_px = rect.width;
-     const pageHeight_px = rect.height;
-     
-     startRef.current = { 
-        x: e.clientX, y: e.clientY, 
-        ex: element.x * pageWidth_px, ey: element.y * pageHeight_px, 
-        w: 0, h: 0 
-     };
+     onDragStart(e, pageId, element, containerRef);
   };
 
   const handleResizeDown = (e: React.PointerEvent, handle: string) => {
@@ -150,13 +134,15 @@ const DraggableResizableImage: React.FC<{
   return (
      <div
         onPointerDown={handleDown}
-        className={`absolute group select-none transition-shadow ${isDragging || !!resizingHandle ? 'ring-2 ring-blue-500 z-50 shadow-2xl' : 'hover:ring-1 hover:ring-blue-400 z-10'}`}
+        className={`absolute group select-none transition-shadow ${!!resizingHandle ? 'ring-2 ring-blue-500 z-50 shadow-2xl' : 'hover:ring-1 hover:ring-blue-400 z-10'}`}
         style={{
            left: `${element.x * 100}%`,
            top: `${element.y * 100}%`,
            width: `${element.width * 100}%`,
            height: `${element.height * 100}%`,
-           cursor: isDragging ? 'grabbing' : 'grab'
+           cursor: 'grab',
+           opacity: isDraggingGlobally ? 0 : 1,
+           pointerEvents: isDraggingGlobally ? 'none' : 'auto'
         }}
      >
         <img src={element.previewUrl} className="w-full h-full object-contain pointer-events-none" />
@@ -189,7 +175,7 @@ const DraggableResizableImage: React.FC<{
         ))}
         
         {/* Visual feedback for dragging/resizing */}
-        {(isDragging || !!resizingHandle) && (
+        {(!!resizingHandle) && (
           <div className="absolute inset-0 bg-blue-500/10 pointer-events-none" />
         )}
      </div>
@@ -201,8 +187,10 @@ const CanvasPage: React.FC<{
   index: number,
   zoom: number,
   updateElement: (pageId: string, elementId: string, updates: Partial<ImageElement>) => void,
-  removeElement: (pageId: string, elementId: string) => void
-}> = ({ page, index, zoom, updateElement, removeElement }) => {
+  removeElement: (pageId: string, elementId: string) => void,
+  onImageDragStart: (e: React.PointerEvent, pageId: string, element: ImageElement, containerRef: React.RefObject<HTMLDivElement>) => void,
+  activeImageDragId: string | null
+}> = ({ page, index, zoom, updateElement, removeElement, onImageDragStart, activeImageDragId }) => {
   const pageRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -210,16 +198,20 @@ const CanvasPage: React.FC<{
       className="bg-white shadow-lg relative overflow-hidden ring-1 ring-slate-200"
       style={{ width: '100%', aspectRatio: '210/297' }} // A4 Ratio
       ref={pageRef}
+      data-page-id={page.id}
     >
       <div className="absolute top-2 left-2 text-[10px] font-mono text-slate-300 pointer-events-none select-none">Page {index + 1}</div>
       {page.elements.map(el => (
          <DraggableResizableImage 
             key={el.id} 
             element={el} 
+            pageId={page.id}
             containerRef={pageRef}
             onUpdate={(u) => updateElement(page.id, el.id, u)}
             onRemove={() => removeElement(page.id, el.id)}
+            onDragStart={onImageDragStart}
             zoom={zoom}
+            isDraggingGlobally={activeImageDragId === el.id}
          />
       ))}
     </div>
@@ -241,8 +233,106 @@ export const ImageToPDF: React.FC = () => {
   });
 
   // Free Drag State for Images
-  const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
-  const [resizingImageId, setResizingImageId] = useState<string | null>(null);
+  const [activeImageDrag, setActiveImageDrag] = useState<{
+    pageId: string;
+    element: ImageElement;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+
+  const handleImageDragStart = useCallback((e: React.PointerEvent, pageId: string, element: ImageElement, containerRef: React.RefObject<HTMLDivElement>) => {
+    e.stopPropagation();
+    const rect = containerRef.current!.getBoundingClientRect();
+    const width = rect.width * element.width;
+    const height = rect.height * element.height;
+    const elementLeft = rect.left + rect.width * element.x;
+    const elementTop = rect.top + rect.height * element.y;
+    
+    setActiveImageDrag({
+      pageId,
+      element,
+      offsetX: e.clientX - elementLeft,
+      offsetY: e.clientY - elementTop,
+      width,
+      height,
+      clientX: e.clientX,
+      clientY: e.clientY
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!activeImageDrag) return;
+
+    const handleMove = (e: PointerEvent) => {
+      setActiveImageDrag(prev => prev ? { ...prev, clientX: e.clientX, clientY: e.clientY } : null);
+    };
+
+    const handleUp = (e: PointerEvent) => {
+      setActiveImageDrag(prev => {
+        if (!prev) return null;
+
+        const elements = document.elementsFromPoint(e.clientX, e.clientY);
+        const pageNode = elements.find(el => el.hasAttribute('data-page-id'));
+        
+        if (pageNode) {
+          const targetPageId = pageNode.getAttribute('data-page-id')!;
+          const rect = pageNode.getBoundingClientRect();
+          
+          const dropX = e.clientX - prev.offsetX;
+          const dropY = e.clientY - prev.offsetY;
+          
+          const newX = (dropX - rect.left) / rect.width;
+          const newY = (dropY - rect.top) / rect.height;
+          const newWidth = prev.width / rect.width;
+          const newHeight = prev.height / rect.height;
+
+          setPages(prevPages => {
+            let newPages = [...prevPages];
+            
+            // Remove from old page
+            newPages = newPages.map(p => {
+              if (p.id === prev.pageId) {
+                return { ...p, elements: p.elements.filter(el => el.id !== prev.element.id) };
+              }
+              return p;
+            });
+            
+            // Add to new page
+            newPages = newPages.map(p => {
+              if (p.id === targetPageId) {
+                return { 
+                  ...p, 
+                  elements: [...p.elements, { 
+                    ...prev.element, 
+                    x: newX, 
+                    y: newY,
+                    width: newWidth,
+                    height: newHeight
+                  }] 
+                };
+              }
+              return p;
+            });
+            
+            return newPages;
+          });
+        }
+        
+        return null;
+      });
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [activeImageDrag ? true : false]);
 
   // Initialize with pages if files dropped
   const handleFilesSelected = async (newFiles: File[]) => {
@@ -527,6 +617,8 @@ export const ImageToPDF: React.FC = () => {
                             zoom={zoom}
                             updateElement={updateElement}
                             removeElement={removeElement}
+                            onImageDragStart={handleImageDragStart}
+                            activeImageDragId={activeImageDrag?.element.id || null}
                          />
                      </div>
                   ))}
@@ -550,6 +642,23 @@ export const ImageToPDF: React.FC = () => {
              <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-400 font-bold text-xl border border-dashed border-slate-300">
                 Moving Page...
              </div>
+         </div>,
+         document.body
+      )}
+
+      {/* Image Drag Overlay */}
+      {activeImageDrag && createPortal(
+         <div 
+            className="fixed pointer-events-none z-[60] shadow-2xl ring-2 ring-blue-500 opacity-90"
+            style={{ 
+               top: activeImageDrag.clientY - activeImageDrag.offsetY, 
+               left: activeImageDrag.clientX - activeImageDrag.offsetX,
+               width: activeImageDrag.width,
+               height: activeImageDrag.height,
+               cursor: 'grabbing'
+            }}
+         >
+            <img src={activeImageDrag.element.previewUrl} className="w-full h-full object-contain pointer-events-none" />
          </div>,
          document.body
       )}
