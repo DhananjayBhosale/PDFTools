@@ -51,6 +51,7 @@ export const CompressPDF: React.FC = () => {
   // Analysis State
   const [analysis, setAnalysis] = useState<{ isTextHeavy: boolean; done: boolean }>({ isTextHeavy: false, done: false });
   const [targetEstimate, setTargetEstimate] = useState<number>(0);
+  const [flatten, setFlatten] = useState<boolean>(true);
 
   // 1. Analyze file when selected
   useEffect(() => {
@@ -117,7 +118,8 @@ export const CompressPDF: React.FC = () => {
         level, 
         (p) => setStatus(prev => ({ ...prev, progress: p, message: p < 50 ? 'Pass 1: Compressing...' : 'Pass 2: Optimizing...' })),
         overrideSafety,
-        customConfig // NEW: Pass custom config if confirmed from preview
+        customConfig, // NEW: Pass custom config if confirmed from preview
+        flatten
       );
       
       // If blocked by service (double safety), shouldn't happen if we handled it in preview, but fallback:
@@ -291,7 +293,7 @@ export const CompressPDF: React.FC = () => {
             )}
 
             {/* Compression Levels */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               {[
                 { id: 'extreme', label: 'Extreme', desc: 'Max Reduction', sub: 'Low DPI' },
                 { id: 'recommended', label: 'Recommended', desc: 'Balanced', sub: 'Standard DPI' },
@@ -319,6 +321,22 @@ export const CompressPDF: React.FC = () => {
                 </button>
               ))}
             </div>
+
+            {!result && (
+              <div className="mb-8 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div>
+                  <div className="font-bold text-sm text-slate-800 dark:text-slate-200">Flatten PDF (Rasterize)</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Required for high compression. Uncheck to keep text selectable (minimal compression).</div>
+                </div>
+                <button 
+                  onClick={() => setFlatten(!flatten)}
+                  disabled={status.isProcessing}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${flatten ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${flatten ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-col gap-3">

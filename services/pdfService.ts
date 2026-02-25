@@ -575,13 +575,14 @@ export const compressPDFAdaptive = async (
   level: CompressionLevel, 
   onProgress: (p: number) => void,
   overrideSafety: boolean = false,
-  customConfig?: AdaptiveConfig
+  customConfig?: AdaptiveConfig,
+  flatten: boolean = true
 ) => {
   const config = customConfig || getAdaptiveConfig(level, false);
   
   // Implemented safety check to match usage in CompressPDF.tsx
   // This avoids processing if DPI is too low, unless safety is overridden
-  if (!overrideSafety && config.projectedDPI < 72) {
+  if (!overrideSafety && config.projectedDPI < 72 && flatten) {
       return {
           data: new Uint8Array(0),
           meta: {
@@ -594,6 +595,23 @@ export const compressPDFAdaptive = async (
   }
 
   const arrayBuffer = await readFileAsArrayBuffer(file);
+  
+  if (!flatten) {
+     onProgress(50);
+     const pdfDoc = await PDFDocument.load(arrayBuffer);
+     const saved = await pdfDoc.save({ useObjectStreams: false });
+     onProgress(100);
+     return {
+         data: saved,
+         meta: {
+            compressedSize: saved.byteLength,
+            projectedDPI: 300,
+            strategyUsed: 'Basic Optimization (No Flattening)'
+         },
+         status: 'success' as const
+     };
+  }
+
   const pdf = await pdfjs.getDocument(getSafeBuffer(arrayBuffer)).promise;
   const numPages = pdf.numPages;
   const newPdf = await PDFDocument.create();

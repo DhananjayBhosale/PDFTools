@@ -393,6 +393,9 @@ export const Dashboard = () => {
               <span className="block mt-2">
                 Feedback is welcome on Twitter <a href="https://twitter.com/dhananjay_Tech" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 font-medium transition-colors">@dhananjay_Tech</a>.
               </span>
+              <span className="block mt-2">
+                Check out my other projects at <a href="https://dhananjaytech.app" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 font-medium transition-colors">dhananjaytech.app</a>.
+              </span>
             </p>
           </div>
         </div>
