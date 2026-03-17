@@ -410,9 +410,13 @@ export const Dashboard = () => {
              <Github size={18}/> View Source on GitHub
            </a>
            
-           <p className="text-xs text-slate-400 dark:text-slate-600">
-              MIT License • Built with React & PDF-Lib
-           </p>
+           <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-xs text-slate-400 dark:text-slate-600">
+              <span>MIT License • Built with React & PDF-Lib</span>
+              <span className="hidden sm:inline">•</span>
+              <Link to="/privacy-policy" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Privacy Policy</Link>
+              <span className="hidden sm:inline">•</span>
+              <Link to="/pdf-chef-privacy" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">PDF Chef Privacy Policy</Link>
+           </div>
         </div>
       </div>
 

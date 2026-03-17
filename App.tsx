@@ -25,6 +25,7 @@ const EditPDF = React.lazy(() => import('./components/Tools/EditPDF').then(modul
 const SignPDF = React.lazy(() => import('./components/Tools/SignPDF').then(module => ({ default: module.SignPDF })));
 const ComparePDF = React.lazy(() => import('./components/Tools/ComparePDF').then(module => ({ default: module.ComparePDF })));
 const PrivacyPolicy = React.lazy(() => import('./components/Pages/PrivacyPolicy').then(module => ({ default: module.PrivacyPolicy })));
+const PdfChefPrivacy = React.lazy(() => import('./components/Pages/PdfChefPrivacy').then(module => ({ default: module.PdfChefPrivacy })));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
@@ -78,6 +79,7 @@ const AnimatedRoutes = () => {
             
             {/* Pages */}
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/pdf-chef-privacy" element={<PdfChefPrivacy />} />
             
             <Route path="*" element={<Dashboard />} />
           </Routes>
