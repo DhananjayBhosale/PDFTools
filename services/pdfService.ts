@@ -373,7 +373,22 @@ export const flattenPDF = async (file: File): Promise<Uint8Array> => {
 export const unlockPDF = async (file: File, password: string): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer, { password } as any);
-  return pdfDoc.save();
+  
+  // Create a new document to ensure encryption dictionaries are completely stripped
+  const newPdfDoc = await PDFDocument.create();
+  
+  // Copy all pages
+  const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+  copiedPages.forEach((page) => newPdfDoc.addPage(page));
+  
+  // Copy basic metadata
+  if (pdfDoc.getTitle()) newPdfDoc.setTitle(pdfDoc.getTitle()!);
+  if (pdfDoc.getAuthor()) newPdfDoc.setAuthor(pdfDoc.getAuthor()!);
+  if (pdfDoc.getSubject()) newPdfDoc.setSubject(pdfDoc.getSubject()!);
+  if (pdfDoc.getCreator()) newPdfDoc.setCreator(pdfDoc.getCreator()!);
+  if (pdfDoc.getProducer()) newPdfDoc.setProducer(pdfDoc.getProducer()!);
+  
+  return newPdfDoc.save();
 };
 
 export const extractTextFromPDF = async (file: File): Promise<string> => {
