@@ -55,6 +55,7 @@ interface ToolCardData {
   description: string;
   color: ToolColor;
   path: string;
+  beta?: boolean;
 }
 
 const tools: ToolCardData[] = [
@@ -71,7 +72,7 @@ const tools: ToolCardData[] = [
   { id: 11, name: 'PDF to Image', icon: FileImage, category: 'Convert', description: 'Convert to images', color: 'yellow', path: '/pdf-to-jpg' },
   { id: 12, name: 'Image to PDF', icon: ImageIcon, category: 'Convert', description: 'Create PDF from images', color: 'teal', path: '/image-to-pdf' },
   { id: 13, name: 'Make PDF', icon: Smartphone, category: 'Convert', description: 'Capture photos and make a PDF', color: 'indigo', path: '/make-pdf' },
-  { id: 14, name: 'Edit', icon: Edit3, category: 'Convert', description: 'Edit PDF content', color: 'indigo', path: '/edit' },
+  { id: 14, name: 'Edit PDF', icon: Edit3, category: 'Convert', description: 'Edit PDF content', color: 'indigo', path: '/edit', beta: true },
   { id: 15, name: 'Compare', icon: GitCompare, category: 'Review & Secure', description: 'Visual compare + export text report', color: 'violet', path: '/compare' },
   { id: 16, name: 'Extract text', icon: FileText, category: 'Review & Secure', description: 'Extract text content', color: 'sky', path: '/ocr' },
   { id: 17, name: 'Metadata', icon: Database, category: 'Review & Secure', description: 'View or edit metadata', color: 'orange', path: '/metadata' },
@@ -120,7 +121,14 @@ const ToolCard: React.FC<{ tool: ToolCardData; index: number }> = ({ tool, index
           <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${tone.iconBox}`}>
             <Icon className={`h-8 w-8 ${tone.icon}`} />
           </div>
-          <h3 className="text-2xl font-medium leading-none tracking-[-0.01em] text-slate-900 dark:text-white">{tool.name}</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-2xl font-medium leading-none tracking-[-0.01em] text-slate-900 dark:text-white">{tool.name}</h3>
+            {tool.beta && (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                Beta
+              </span>
+            )}
+          </div>
         </div>
       </Link>
     </motion.div>
