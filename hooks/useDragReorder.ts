@@ -1,9 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-
-interface DragItem {
-  id: string;
-}
+import React, { useState, useRef, useCallback } from 'react';
 
 interface Slot {
   id: string; // The ID of the item currently in this slot (at start of drag)
@@ -18,11 +13,10 @@ interface Slot {
 interface UseDragReorderOptions<T> {
   items: T[];
   onReorder: (newItems: T[]) => void;
-  containerRef: React.RefObject<HTMLElement>;
   keyExtractor: (item: T) => string;
 }
 
-export function useDragReorder<T>({ items, onReorder, containerRef, keyExtractor }: UseDragReorderOptions<T>) {
+export function useDragReorder<T>({ items, onReorder, keyExtractor }: UseDragReorderOptions<T>) {
   // State
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overlayStyle, setOverlayStyle] = useState({ top: 0, left: 0, width: 0, height: 0 });
@@ -56,7 +50,6 @@ export function useDragReorder<T>({ items, onReorder, containerRef, keyExtractor
     
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
-      const isVerticalList = s.bottom - s.top > s.right - s.left; // Rough guess if list item
       
       // Check if we are "before" this slot visually
       // In a grid (LTR, TTB):

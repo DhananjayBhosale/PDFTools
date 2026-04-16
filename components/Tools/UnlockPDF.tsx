@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { unlockPDF } from '../../services/pdfService';
+import { unlockPDF } from '../../services/pdfDocument';
+import { downloadBlob } from '../../services/pdfShared';
 import { Unlock, Lock, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
+import { StatusToast } from '../UI/StatusToast';
 
 export const UnlockPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
@@ -24,15 +26,8 @@ export const UnlockPDF: React.FC = () => {
     setStatus({ isProcessing: true, progress: 10, message: 'Decrypting...' });
     try {
       const pdfBytes = await unlockPDF(file.file, password);
-      setStatus({ isProcessing: true, progress: 100, message: 'Done!' });
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `unlocked-${file.name}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setStatus({ isProcessing: false, progress: 0, message: '' });
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `unlocked-${file.name}`);
+      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
       console.error(error);
       setStatus({ isProcessing: false, progress: 0, message: '', error: 'Incorrect password or failed to unlock.' });
@@ -71,6 +66,7 @@ export const UnlockPDF: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      <StatusToast status={status} />
     </div>
   );
 };

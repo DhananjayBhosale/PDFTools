@@ -1,5 +1,5 @@
 {
-  "name": "ZenPDF",
-  "description": "A privacy-first, fully local PDF suite. Merge, split, compress, and edit PDFs directly in your browser without any server uploads.",
+  "name": "PDF Chef",
+  "description": "Private PDF tools for your device. Merge, split, convert, and protect in the browser.",
   "requestFramePermissions": []
 }

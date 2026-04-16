@@ -1,16 +1,5 @@
 import React from 'react';
 
-export enum ToolType {
-  MERGE = 'merge',
-  SPLIT = 'split',
-  COMPRESS = 'compress',
-  IMG_TO_PDF = 'img-to-pdf',
-  PDF_TO_IMG = 'pdf-to-img',
-  ROTATE = 'rotate',
-  METADATA = 'metadata',
-  PROTECT = 'protect',
-}
-
 export interface PDFFile {
   id: string;
   file: File;

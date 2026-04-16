@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { rotateSpecificPages, getPDFPageCount, getPdfPagePreviews } from '../../services/pdfService';
-import { RotateCw, FileText, Loader2, Undo2, CheckSquare, Save } from 'lucide-react';
+import { getPdfPagePreviews } from '../../services/pdfBrowser';
+import { rotateSpecificPages } from '../../services/pdfDocument';
+import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
+import { RotateCw, Loader2, Undo2, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import { PageThumbnail } from '../UI/PageThumbnail';
+import { StatusToast } from '../UI/StatusToast';
 
 export const RotatePDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
@@ -15,21 +18,29 @@ export const RotatePDF: React.FC = () => {
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [pageRotations, setPageRotations] = useState<Record<number, number>>({}); // Map pageIndex -> rotation
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
+  const totalPages = previews.length || file?.pageCount || 0;
 
   // Load previews
   useEffect(() => {
+    let cancelled = false;
+
     if (file) {
       setLoadingPreviews(true);
       getPdfPagePreviews(file.file)
         .then(urls => {
+          if (cancelled) {
+            revokeObjectUrls(urls);
+            return;
+          }
           setPreviews(urls);
           setLoadingPreviews(false);
           // Initialize rotations to 0
           const initialRotations: Record<number, number> = {};
-          for(let i=0; i < (file.pageCount || 0); i++) initialRotations[i] = 0;
+          for (let i = 0; i < urls.length; i += 1) initialRotations[i] = 0;
           setPageRotations(initialRotations);
         })
         .catch(err => {
+          if (cancelled) return;
           console.error(err);
           setLoadingPreviews(false);
         });
@@ -38,9 +49,19 @@ export const RotatePDF: React.FC = () => {
       setPageRotations({});
       setSelectedPages([]);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
-  const handleFilesSelected = async (files: File[]) => {
+  useEffect(() => {
+    return () => {
+      revokeObjectUrls(previews);
+    };
+  }, [previews]);
+
+  const handleFilesSelected = (files: File[]) => {
     if (files.length === 0) return;
     const f = files[0];
     if (f.type !== 'application/pdf') return;
@@ -50,7 +71,6 @@ export const RotatePDF: React.FC = () => {
       file: f,
       name: f.name,
       size: f.size,
-      pageCount: await getPDFPageCount(f)
     });
   };
 
@@ -60,18 +80,12 @@ export const RotatePDF: React.FC = () => {
     );
   };
 
-  const selectAll = () => {
-    if (file && file.pageCount) {
-      setSelectedPages(Array.from({ length: file.pageCount }, (_, i) => i));
-    }
-  };
-
   const rotateSelected = (angle: 90 | -90) => {
     setPageRotations(prev => {
       const next = { ...prev };
       const pagesToRotate = selectedPages.length > 0 
         ? selectedPages 
-        : Array.from({ length: file?.pageCount || 0 }, (_, i) => i); // Rotate all if none selected
+        : Array.from({ length: totalPages }, (_, i) => i); // Rotate all if none selected
 
       pagesToRotate.forEach(index => {
         next[index] = (next[index] || 0) + angle;
@@ -82,7 +96,7 @@ export const RotatePDF: React.FC = () => {
 
   const resetRotation = () => {
     const next: Record<number, number> = {};
-    for(let i=0; i < (file?.pageCount || 0); i++) next[i] = 0;
+    for (let i = 0; i < totalPages; i += 1) next[i] = 0;
     setPageRotations(next);
   };
 
@@ -103,17 +117,8 @@ export const RotatePDF: React.FC = () => {
 
       const pdfBytes = await rotateSpecificPages(file.file, rotationArray);
       
-      setStatus({ isProcessing: true, progress: 100, message: 'Done!' });
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `rotated-${file.name}`;
-      a.click();
-      
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setStatus({ isProcessing: false, progress: 0, message: '' });
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `rotated-${file.name}`);
+      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
       console.error(error);
       setStatus({ isProcessing: false, progress: 0, message: '', error: 'Rotation failed' });
@@ -204,6 +209,7 @@ export const RotatePDF: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      <StatusToast status={status} />
     </div>
   );
 };

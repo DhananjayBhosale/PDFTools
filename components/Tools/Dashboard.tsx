@@ -1,425 +1,241 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  FileStack, Scissors, Image as ImageIcon, RotateCw, Shield, 
-  FileText, Layers, Lock, FileSearch, ArrowRight, Search, 
-  FileImage, PenTool, Eraser, Move, Unlock, Maximize, GitCompare, ScanText, FileSignature, Github, HelpCircle
+import { motion } from 'framer-motion';
+import {
+  ArrowDownUp,
+  CircleDot,
+  Database,
+  Droplets,
+  Edit3,
+  FileDown,
+  FileImage,
+  FileSignature,
+  FileStack,
+  FileText,
+  GitCompare,
+  Hash,
+  Image as ImageIcon,
+  Lock,
+  Minimize2,
+  RotateCw,
+  Scissors,
+  Search,
+  Smartphone,
+  Square,
+  Trash2,
+  Unlock,
+  Wrench,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ToolRoute } from '../../types';
+import type { LucideIcon } from 'lucide-react';
 
-// SEO-Optimized Tool Registry
-const tools: ToolRoute[] = [
-  // --- TIER 1: HIGH INTENT (Hero Tools) ---
-  { 
-    path: '/compress', 
-    label: 'Compress PDF', 
-    description: 'Reduce file size while maintaining quality.', 
-    icon: Layers, 
-    color: 'text-indigo-500', 
-    category: 'core', 
-    tier: 1,
-    keywords: ['shrink', 'reduce', 'optimize', 'size']
-  },
-  { 
-    path: '/merge', 
-    label: 'Merge PDF', 
-    description: 'Combine multiple PDFs into one file.', 
-    icon: FileStack, 
-    color: 'text-blue-500', 
-    category: 'core', 
-    tier: 1,
-    keywords: ['combine', 'join', 'binder']
-  },
-  { 
-    path: '/split', 
-    label: 'Split PDF', 
-    description: 'Extract pages or split into separate files.', 
-    icon: Scissors, 
-    color: 'text-rose-500', 
-    category: 'core', 
-    tier: 1,
-    keywords: ['cut', 'extract', 'separate']
-  },
-  { 
-    path: '/edit', 
-    label: 'Edit PDF (BETA)', 
-    description: 'Add text, shapes, and annotations.', 
-    icon: PenTool, 
-    color: 'text-pink-500', 
-    category: 'core', 
-    tier: 1,
-    keywords: ['modify', 'change', 'text']
-  },
-  { 
-    path: '/pdf-to-jpg', 
-    label: 'PDF to JPG', 
-    description: 'Convert PDF pages to images.', 
-    icon: FileImage, 
-    color: 'text-amber-500', 
-    category: 'convert', 
-    tier: 1,
-    keywords: ['image', 'convert', 'png', 'jpeg']
-  },
-  { 
-    path: '/image-to-pdf', 
-    label: 'JPG to PDF', 
-    description: 'Turn your images into a PDF document.', 
-    icon: ImageIcon, 
-    color: 'text-purple-500', 
-    category: 'convert', 
-    tier: 1,
-    keywords: ['photo', 'convert', 'create']
-  },
-  { 
-    path: '/sign', 
-    label: 'Sign PDF', 
-    description: 'Sign documents digitally.', 
-    icon: FileSignature, 
-    color: 'text-teal-500', 
-    category: 'security', 
-    tier: 1,
-    keywords: ['signature', 'contract', 'form']
-  },
+type ToolCategory = 'Arrange' | 'Convert' | 'Review & Secure';
+type ToolColor =
+  | 'orange'
+  | 'teal'
+  | 'purple'
+  | 'blue'
+  | 'red'
+  | 'sky'
+  | 'cyan'
+  | 'green'
+  | 'yellow'
+  | 'indigo'
+  | 'violet'
+  | 'amber'
+  | 'emerald'
+  | 'lime';
 
-  // --- TIER 2: QUICK TOOLS ---
-  { 
-    path: '/delete-pages', 
-    label: 'Delete Pages', 
-    description: 'Remove unwanted pages.', 
-    icon: Eraser, 
-    color: 'text-red-500', 
-    category: 'pages', 
-    tier: 2,
-    keywords: ['remove', 'cut']
-  },
-  { 
-    path: '/reorder', 
-    label: 'Reorder Pages', 
-    description: 'Rearrange page order.', 
-    icon: Move, 
-    color: 'text-orange-500', 
-    category: 'pages', 
-    tier: 2,
-    keywords: ['sort', 'arrange']
-  },
-  { 
-    path: '/rotate', 
-    label: 'Rotate Pages', 
-    description: 'Fix page orientation.', 
-    icon: RotateCw, 
-    color: 'text-cyan-500', 
-    category: 'pages', 
-    tier: 2,
-    keywords: ['turn', 'orientation']
-  },
-  { 
-    path: '/protect', 
-    label: 'Protect PDF', 
-    description: 'Encrypt with password.', 
-    icon: Lock, 
-    color: 'text-emerald-500', 
-    category: 'security', 
-    tier: 2,
-    keywords: ['lock', 'password', 'encrypt']
-  },
-  { 
-    path: '/unlock', 
-    label: 'Unlock PDF', 
-    description: 'Remove PDF passwords.', 
-    icon: Unlock, 
-    color: 'text-lime-500', 
-    category: 'security', 
-    tier: 2,
-    keywords: ['decrypt', 'open']
-  },
-  { 
-    path: '/extract', 
-    label: 'Extract Pages', 
-    description: 'Get specific pages.', 
-    icon: FileText, 
-    color: 'text-violet-500', 
-    category: 'pages', 
-    tier: 2,
-    keywords: ['pull', 'take']
-  },
-  { 
-    path: '/metadata', 
-    label: 'Metadata', 
-    description: 'Edit file info.', 
-    icon: FileSearch, 
-    color: 'text-sky-500', 
-    category: 'core', 
-    tier: 2,
-    keywords: ['info', 'author', 'title']
-  },
+type CategoryFilter = 'All' | ToolCategory;
 
-  // --- TIER 3: ADVANCED ---
-  { 
-    path: '/flatten', 
-    label: 'Flatten PDF', 
-    description: 'Merge layers and forms.', 
-    icon: Maximize, 
-    color: 'text-slate-500', 
-    category: 'core', 
-    tier: 3,
-    keywords: ['merge layers', 'form']
-  },
-  { 
-    path: '/compare', 
-    label: 'Compare PDFs', 
-    description: 'Find differences.', 
-    icon: GitCompare, 
-    color: 'text-slate-500', 
-    category: 'core', 
-    tier: 3,
-    keywords: ['diff', 'changes']
-  },
-  { 
-    path: '/ocr', 
-    label: 'OCR PDF', 
-    description: 'Make text searchable.', 
-    icon: ScanText, 
-    color: 'text-slate-500', 
-    category: 'core', 
-    tier: 3,
-    experimental: true,
-    keywords: ['text recognition', 'scan']
-  },
+interface ToolCardData {
+  id: number;
+  name: string;
+  icon: LucideIcon;
+  category: ToolCategory;
+  description: string;
+  color: ToolColor;
+  path: string;
+}
+
+const tools: ToolCardData[] = [
+  { id: 1, name: 'Merge', icon: FileStack, category: 'Arrange', description: 'Combine multiple PDFs', color: 'orange', path: '/merge' },
+  { id: 2, name: 'Split', icon: Scissors, category: 'Arrange', description: 'Divide PDF into parts', color: 'teal', path: '/split' },
+  { id: 3, name: 'Reorder', icon: ArrowDownUp, category: 'Arrange', description: 'Rearrange pages', color: 'purple', path: '/reorder' },
+  { id: 4, name: 'Rotate', icon: RotateCw, category: 'Arrange', description: 'Rotate PDF pages', color: 'blue', path: '/rotate' },
+  { id: 5, name: 'Delete pages', icon: Trash2, category: 'Arrange', description: 'Remove unwanted pages', color: 'red', path: '/delete-pages' },
+  { id: 6, name: 'Extract pages', icon: FileText, category: 'Arrange', description: 'Export only selected pages', color: 'sky', path: '/extract' },
+  { id: 7, name: 'Page numbers', icon: Hash, category: 'Arrange', description: 'Add numbered labels to pages', color: 'blue', path: '/page-numbers' },
+  { id: 8, name: 'Watermark', icon: Droplets, category: 'Arrange', description: 'Add text watermark on each page', color: 'cyan', path: '/watermark' },
+  { id: 9, name: 'Flatten', icon: Minimize2, category: 'Arrange', description: 'Flatten form fields', color: 'cyan', path: '/flatten' },
+  { id: 10, name: 'Compress', icon: FileDown, category: 'Convert', description: 'Reduce file size', color: 'green', path: '/compress' },
+  { id: 11, name: 'PDF to Image', icon: FileImage, category: 'Convert', description: 'Convert to images', color: 'yellow', path: '/pdf-to-jpg' },
+  { id: 12, name: 'Image to PDF', icon: ImageIcon, category: 'Convert', description: 'Create PDF from images', color: 'teal', path: '/image-to-pdf' },
+  { id: 13, name: 'Make PDF', icon: Smartphone, category: 'Convert', description: 'Capture photos and make a PDF', color: 'indigo', path: '/make-pdf' },
+  { id: 14, name: 'Edit', icon: Edit3, category: 'Convert', description: 'Edit PDF content', color: 'indigo', path: '/edit' },
+  { id: 15, name: 'Compare', icon: GitCompare, category: 'Review & Secure', description: 'Visual compare + export text report', color: 'violet', path: '/compare' },
+  { id: 16, name: 'Extract text', icon: FileText, category: 'Review & Secure', description: 'Extract text content', color: 'sky', path: '/ocr' },
+  { id: 17, name: 'Metadata', icon: Database, category: 'Review & Secure', description: 'View or edit metadata', color: 'orange', path: '/metadata' },
+  { id: 18, name: 'Sign', icon: FileSignature, category: 'Review & Secure', description: 'Digitally sign PDF', color: 'amber', path: '/sign' },
+  { id: 19, name: 'Protect', icon: Lock, category: 'Review & Secure', description: 'Add password protection', color: 'emerald', path: '/protect' },
+  { id: 20, name: 'Unlock', icon: Unlock, category: 'Review & Secure', description: 'Remove password', color: 'lime', path: '/unlock' },
+  { id: 21, name: 'Repair', icon: Wrench, category: 'Review & Secure', description: 'Re-save for compatibility fixes', color: 'amber', path: '/repair' },
 ];
 
-const HeroCard: React.FC<{ tool: ToolRoute }> = ({ tool }) => (
-  <Link 
-    to={tool.path}
-    className="group relative flex flex-col p-6 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-blue-500/50 dark:hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/5 dark:hover:shadow-blue-900/10 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
-  >
-    <div className={`absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity ${tool.color} -rotate-12 transform scale-150 origin-top-right`}>
-      <tool.icon size={80} strokeWidth={1.5} />
-    </div>
-    
-    <div className="flex items-start justify-between mb-4">
-      <div className={`p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 ${tool.color} ring-1 ring-slate-100 dark:ring-slate-700 group-hover:scale-110 transition-transform duration-300`}>
-        <tool.icon size={26} />
-      </div>
-      <ArrowRight size={20} className="text-slate-300 dark:text-slate-700 group-hover:text-blue-500 transition-colors -translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0" />
-    </div>
-    
-    <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-2">{tool.label}</h3>
-    {tool.path === '/edit' && (
-      <p className="font-bold text-xs text-orange-500 mb-2">LIMITED FUNCTIONALITY</p>
-    )}
-    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{tool.description}</p>
-  </Link>
-);
+const toneClasses: Record<ToolColor, { iconBox: string; icon: string }> = {
+  orange: { iconBox: 'bg-rose-50 dark:bg-rose-950/35', icon: 'text-rose-500 dark:text-rose-300' },
+  teal: { iconBox: 'bg-cyan-50 dark:bg-cyan-950/35', icon: 'text-cyan-500 dark:text-cyan-300' },
+  purple: { iconBox: 'bg-purple-50 dark:bg-purple-950/35', icon: 'text-purple-500 dark:text-purple-300' },
+  blue: { iconBox: 'bg-blue-50 dark:bg-blue-950/35', icon: 'text-blue-500 dark:text-blue-300' },
+  red: { iconBox: 'bg-red-50 dark:bg-red-950/35', icon: 'text-red-500 dark:text-red-300' },
+  sky: { iconBox: 'bg-blue-50 dark:bg-blue-950/35', icon: 'text-blue-500 dark:text-blue-300' },
+  cyan: { iconBox: 'bg-cyan-50 dark:bg-cyan-950/35', icon: 'text-cyan-500 dark:text-cyan-300' },
+  green: { iconBox: 'bg-emerald-50 dark:bg-emerald-950/35', icon: 'text-emerald-500 dark:text-emerald-300' },
+  yellow: { iconBox: 'bg-amber-50 dark:bg-amber-950/35', icon: 'text-amber-500 dark:text-amber-300' },
+  indigo: { iconBox: 'bg-indigo-50 dark:bg-indigo-950/35', icon: 'text-indigo-500 dark:text-indigo-300' },
+  violet: { iconBox: 'bg-violet-50 dark:bg-violet-950/35', icon: 'text-violet-500 dark:text-violet-300' },
+  amber: { iconBox: 'bg-amber-50 dark:bg-amber-950/35', icon: 'text-amber-500 dark:text-amber-300' },
+  emerald: { iconBox: 'bg-emerald-50 dark:bg-emerald-950/35', icon: 'text-emerald-500 dark:text-emerald-300' },
+  lime: { iconBox: 'bg-lime-50 dark:bg-lime-950/35', icon: 'text-lime-600 dark:text-lime-300' },
+};
 
-const QuickCard: React.FC<{ tool: ToolRoute }> = ({ tool }) => (
-  <Link 
-    to={tool.path}
-    className="group flex items-center gap-3 p-4 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200"
-    title={tool.description}
-  >
-    <div className={`p-2 rounded-lg bg-slate-50 dark:bg-slate-800 ${tool.color}`}>
-      <tool.icon size={18} />
-    </div>
-    <span className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{tool.label}</span>
-  </Link>
-);
+const categoryOrder: CategoryFilter[] = ['All', 'Arrange', 'Convert', 'Review & Secure'];
 
-const AdvancedCard: React.FC<{ tool: ToolRoute }> = ({ tool }) => (
-  <Link 
-    to={tool.path}
-    className="flex items-center gap-3 p-3 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-  >
-    <tool.icon size={16} />
-    <span className="text-sm font-medium">{tool.label}</span>
-    {tool.experimental && (
-      <span className="text-[10px] font-bold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">Exp</span>
-    )}
-  </Link>
-);
-
-export const Dashboard = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  const filteredTools = useMemo(() => {
-    if (!searchQuery) return tools;
-    const lowerQuery = searchQuery.toLowerCase();
-    return tools.filter(t => 
-      t.label.toLowerCase().includes(lowerQuery) || 
-      t.description.toLowerCase().includes(lowerQuery) ||
-      t.keywords?.some(k => k.toLowerCase().includes(lowerQuery))
-    );
-  }, [searchQuery]);
-
-  const hasSearch = searchQuery.length > 0;
+const ToolCard: React.FC<{ tool: ToolCardData; index: number }> = ({ tool, index }) => {
+  const Icon = tool.icon;
+  const tone = toneClasses[tool.color];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-16">
-      
-      {/* Search Header */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center max-w-2xl mx-auto mb-12"
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, delay: Math.min(index * 0.02, 0.2) }}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      <Link
+        to={tool.path}
+        className="group block rounded-[22px] border border-slate-200 bg-white/90 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition-all hover:border-slate-300 hover:shadow-[0_12px_32px_rgba(15,23,42,0.07)] dark:border-slate-800 dark:bg-slate-900/65 dark:hover:border-slate-700"
       >
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-6">
-          Everything PDF. <br/>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
-             100% Local & Private.
-          </span>
-        </h1>
-        
-        <div className="relative group max-w-lg mx-auto">
-          <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-500/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all opacity-50" />
-          <div className="relative flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg p-2 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all duration-300">
-            <Search className="ml-3 text-slate-400" size={20} />
-            <input 
-              type="text" 
-              placeholder="What do you want to do with your PDF?"
-              className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-slate-900 dark:text-white placeholder-slate-400 px-3 py-2 text-lg"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoComplete="off"
-            />
+        <div className="flex items-center gap-4">
+          <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${tone.iconBox}`}>
+            <Icon className={`h-8 w-8 ${tone.icon}`} />
           </div>
+          <h3 className="text-2xl font-medium leading-none tracking-[-0.01em] text-slate-900 dark:text-white">{tool.name}</h3>
         </div>
-      </motion.div>
+      </Link>
+    </motion.div>
+  );
+};
 
-      {/* Tools Grid */}
-      <AnimatePresence mode="wait">
-        {hasSearch ? (
-          // Search Results View
-          <motion.div 
-            key="search-results"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-          >
-            {filteredTools.length > 0 ? (
-              filteredTools.map(tool => <HeroCard key={tool.path} tool={tool} />)
-            ) : (
-              <div className="col-span-full text-center py-12 text-slate-500">
-                No tools found for "{searchQuery}". Try "merge", "compress", or "image".
+export const Dashboard: React.FC = () => {
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<CategoryFilter>('All');
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<CategoryFilter, number> = {
+      All: tools.length,
+      Arrange: 0,
+      Convert: 0,
+      'Review & Secure': 0,
+    };
+
+    for (const tool of tools) {
+      counts[tool.category] += 1;
+    }
+
+    return counts;
+  }, []);
+
+  const filteredTools = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    return tools.filter((tool) => {
+      const categoryMatch = category === 'All' || tool.category === category;
+      if (!categoryMatch) return false;
+      if (!normalized) return true;
+
+      const haystack = `${tool.name} ${tool.description} ${tool.category}`.toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [category, query]);
+
+  return (
+    <div className="px-4 py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto max-w-[1320px]">
+        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          <div className="text-center">
+            <h1 className="text-4xl font-semibold tracking-[-0.03em] text-slate-900 dark:text-white md:text-6xl">PDF Chef</h1>
+            <p className="mt-4 text-xl font-medium text-slate-600 dark:text-slate-300">Private PDF tools. On your device.</p>
+            <p className="mt-2 text-lg font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">MERGE. SPLIT. CONVERT. PROTECT.</p>
+
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-lg font-medium text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                <CircleDot className="h-5 w-5" />
+                100% Private
               </div>
-            )}
-          </motion.div>
-        ) : (
-          // Structured Tier View
-          <motion.div 
-            key="tiers"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="space-y-12"
-          >
-            {/* TIER 1: HERO TOOLS */}
-            <section>
-              <h2 className="sr-only">Most Popular Tools</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {tools.filter(t => t.tier === 1).map(tool => (
-                  <HeroCard key={tool.path} tool={tool} />
-                ))}
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-lg font-medium text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                <Square className="h-5 w-5" />
+                Works Offline
               </div>
-            </section>
-
-            {/* TIER 2: QUICK TOOLS */}
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4 px-1">Quick Tools</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {tools.filter(t => t.tier === 2).map(tool => (
-                  <QuickCard key={tool.path} tool={tool} />
-                ))}
-              </div>
-            </section>
-
-            {/* TIER 3: ADVANCED TOOLS */}
-            <section className="border-t border-slate-200 dark:border-slate-800 pt-8">
-              <button 
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 transition-colors mb-4"
-              >
-                <span>{showAdvanced ? 'Hide' : 'Show'} Advanced Tools</span>
-                <ArrowRight size={14} className={`transition-transform duration-200 ${showAdvanced ? 'rotate-90' : ''}`} />
-              </button>
-              
-              <AnimatePresence>
-                {showAdvanced && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 pb-4">
-                      {tools.filter(t => t.tier === 3).map(tool => (
-                        <AdvancedCard key={tool.path} tool={tool} />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Footer / FAQ */}
-      <div className="mt-20 border-t border-slate-200 dark:border-slate-800 pt-10 pb-6">
-        <div className="grid md:grid-cols-2 gap-8 mb-12">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="text-green-500" size={20} />
-              <h3 className="font-bold text-slate-900 dark:text-white text-lg">Privacy First</h3>
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-4">
-              ZenPDF runs <strong>100% locally</strong> in your browser. 
-              Your files never leave your device and are never uploaded to any server. 
-              You can even turn off your internet and use it offline.
-            </p>
           </div>
-          
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <HelpCircle className="text-blue-500" size={20} />
-              <h3 className="font-bold text-slate-900 dark:text-white text-lg">About This Project</h3>
-            </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-              This application is currently <strong>experimental</strong>. 
-              Features are active but may receive frequent updates.
-              <br/>
-              <span className="block mt-2">
-                Feedback is welcome on Twitter <a href="https://twitter.com/dhananjay_Tech" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 font-medium transition-colors">@dhananjay_Tech</a>.
-              </span>
-              <span className="block mt-2">
-                Check out my other projects at <a href="https://dhananjaytech.app" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 font-medium transition-colors">dhananjaytech.app</a>.
-              </span>
-            </p>
-          </div>
-        </div>
 
-        <div className="flex flex-col items-center justify-center gap-6 pt-6">
-           <a 
-             href="https://github.com/DhananjayBhosale/PDFTools" 
-             target="_blank" 
-             rel="noopener noreferrer" 
-             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300"
-           >
-             <Github size={18}/> View Source on GitHub
-           </a>
-           
-           <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-xs text-slate-400 dark:text-slate-600">
-              <span>MIT License • Built with React & PDF-Lib</span>
-              <span className="hidden sm:inline">•</span>
-              <Link to="/privacy-policy" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Privacy Policy</Link>
-              <span className="hidden sm:inline">•</span>
-              <Link to="/pdf-chef-privacy" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">PDF Chef Privacy Policy</Link>
-           </div>
-        </div>
+          <div className="mx-auto mt-9 max-w-5xl">
+            <label htmlFor="tool-search" className="sr-only">
+              Find a tool
+            </label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+              <input
+                id="tool-search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find a tool..."
+                className="h-16 w-full rounded-3xl border border-slate-200 bg-white pl-14 pr-5 text-xl text-slate-700 shadow-sm outline-none transition focus:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-600"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            {categoryOrder.map((item) => {
+              const selected = item === category;
+              return (
+                <button
+                  key={item}
+                  onClick={() => setCategory(item)}
+                  className={`rounded-2xl border px-6 py-2 text-lg font-medium transition ${
+                    selected
+                      ? 'border-orange-500 bg-orange-500 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600'
+                  }`}
+                >
+                  {item} <span className={`ml-1 ${selected ? 'text-orange-100' : 'text-slate-400 dark:text-slate-500'}`}>{categoryCounts[item]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          className="mt-8"
+        >
+          {filteredTools.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white/60 p-10 text-center text-xl text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+              No tools match your search.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {filteredTools.map((tool, index) => (
+                <ToolCard key={tool.id} tool={tool} index={index} />
+              ))}
+            </div>
+          )}
+        </motion.section>
       </div>
-
     </div>
   );
 };

@@ -1,0 +1,56 @@
+{
+  "totalJsSizeKb": 2359.18,
+  "totalJsGzipKb": 739.92,
+  "largestChunks": [
+    {
+      "file": "pdf.worker.min-DKQKFyKK.js",
+      "sizeKb": 1061.73,
+      "gzipKb": 284.19
+    },
+    {
+      "file": "pdfShared-CQMUg5U5.js",
+      "sizeKb": 426.81,
+      "gzipKb": 176.71
+    },
+    {
+      "file": "pdfBrowser-CCom7e2q.js",
+      "sizeKb": 326.73,
+      "gzipKb": 95.69
+    },
+    {
+      "file": "index-BJIgixuH.js",
+      "sizeKb": 298.01,
+      "gzipKb": 96.07
+    },
+    {
+      "file": "jszip.min-CB_0A5DV.js",
+      "sizeKb": 94.69,
+      "gzipKb": 29.18
+    },
+    {
+      "file": "CompressPDF-DqH6koN2.js",
+      "sizeKb": 23.2,
+      "gzipKb": 6.88
+    },
+    {
+      "file": "ImageToPDF-C6qcMryq.js",
+      "sizeKb": 14.35,
+      "gzipKb": 4.88
+    },
+    {
+      "file": "ReorderPDF-Bs7hLF0E.js",
+      "sizeKb": 11.83,
+      "gzipKb": 4.16
+    },
+    {
+      "file": "PdfChefPrivacy-kKEXeAkf.js",
+      "sizeKb": 11.18,
+      "gzipKb": 3.81
+    },
+    {
+      "file": "PDFToImage-Dw3kjZRN.js",
+      "sizeKb": 8.52,
+      "gzipKb": 2.94
+    }
+  ]
+}

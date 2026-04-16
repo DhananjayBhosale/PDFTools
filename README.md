@@ -1,20 +1,18 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# PDF Chef
 
-# Run and deploy your AI Studio app
+Browser-based PDF tools for merge, split, compress, extract, rotate, reorder, compare, and image conversion workflows.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/64034d72-c63f-4ebf-88a5-e6507fbd1797
+Prerequisite: Node.js
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
+1. Install dependencies
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Start the dev server
    `npm run dev`
+
+## Notes
+
+- PDF processing happens in the browser.
+- No Gemini API key is required.
+- Some tools are preview-based or raster-based, so their behavior is intentionally limited by the current client-side implementation.

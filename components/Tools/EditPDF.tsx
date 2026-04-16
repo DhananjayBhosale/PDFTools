@@ -2,16 +2,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { loadPDFDocument, savePDFWithAnnotations, EditorElement } from '../../services/pdfService';
-import { 
-  Loader2, Save, Image as ImageIcon, Trash2, Type, 
-  ArrowLeft, ArrowRight, RotateCw, AlertCircle
-} from 'lucide-react';
+import { loadPDFDocument } from '../../services/pdfBrowser';
+import { savePDFWithAnnotations, type EditorElement } from '../../services/pdfDocument';
+import { downloadBlob } from '../../services/pdfShared';
+import { Save, Trash2, Type } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import { ZoomControls } from '../UI/ZoomControls';
 import { useZoom } from '../../hooks/useZoom';
+import { StatusToast } from '../UI/StatusToast';
 
 // --- REUSABLE PAGE COMPONENT (Virtual Scroll) ---
 const PDFPage: React.FC<{
@@ -110,57 +110,75 @@ const ResizableElement: React.FC<any> = ({ element, isSelected, onSelect, onUpda
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
 
-  const handleStart = (e: any) => {
+  const handleStart = (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     onSelect();
-    const clientX = e.clientX || e.touches[0].clientX;
-    const clientY = e.clientY || e.touches[0].clientY;
-    const rect = e.target.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const clientX = e.clientX;
+    const clientY = e.clientY;
     dragStart.current = { x: clientX - rect.left, y: clientY - rect.top };
     setIsDragging(true);
   };
 
   useEffect(() => {
-    const handleMove = (e: any) => {
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+    const handleMove = (e: PointerEvent) => {
       if (!isDragging || !containerRef.current) return;
-      const clientX = e.clientX || e.touches[0].clientX;
-      const clientY = e.clientY || e.touches[0].clientY;
+      const clientX = e.clientX;
+      const clientY = e.clientY;
       const cRect = containerRef.current.getBoundingClientRect();
       
-      // Calculate position as percentage of the UN-SCALED container size
-      // getBoundingClientRect returns the SCALED size on screen.
-      // So logic: (click - rect.left) / rect.width 
-      // This automatically accounts for zoom because rect.width IS scaled!
-      
-      const x = (clientX - cRect.left - dragStart.current.x) / cRect.width;
-      const y = (clientY - cRect.top - dragStart.current.y) / cRect.height;
+      const x = clamp((clientX - cRect.left - dragStart.current.x) / cRect.width, 0, 0.95);
+      const y = clamp((clientY - cRect.top - dragStart.current.y) / cRect.height, 0, 0.95);
       onUpdate(element.id, { x, y });
     };
+
     const handleEnd = () => setIsDragging(false);
     if (isDragging) {
-       window.addEventListener('mousemove', handleMove);
-       window.addEventListener('mouseup', handleEnd);
+       window.addEventListener('pointermove', handleMove);
+       window.addEventListener('pointerup', handleEnd);
     }
-    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleEnd); };
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+    };
   }, [isDragging, containerRef]);
 
   return (
     <div 
       className={`absolute z-10 cursor-move ${isSelected ? 'ring-2 ring-blue-500 z-20' : 'hover:ring-1 ring-blue-300'}`}
       style={{ left: `${element.x*100}%`, top: `${element.y*100}%`, position: 'absolute' }}
-      onMouseDown={handleStart}
+      onPointerDown={handleStart}
+      onClick={(e) => e.stopPropagation()}
     >
       {element.type === 'text' ? (
-         <textarea 
-           value={element.content} 
-           onChange={e => onUpdate(element.id, { content: e.target.value })}
-           className="bg-transparent border-none resize-none outline-none overflow-hidden"
-           style={{ fontSize: `${element.fontSize}px`, color: element.color, fontFamily: element.fontFamily, width: '200px', height: 'auto' }}
-         />
+         <div
+           className={`min-w-[96px] max-w-[220px] rounded px-1.5 py-1 leading-tight shadow-sm ${
+             isSelected ? 'bg-white/85' : 'bg-white/70'
+           }`}
+           style={{
+             fontSize: `${element.fontSize}px`,
+             color: element.color,
+             fontFamily: element.fontFamily,
+             whiteSpace: 'pre-wrap',
+           }}
+         >
+           {element.content || 'Text'}
+         </div>
       ) : (
          <img src={element.content} className="w-32 h-auto pointer-events-none" />
       )}
-      {isSelected && <button onClick={() => onDelete(element.id)} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1"><Trash2 size={12}/></button>}
+      {isSelected && (
+        <button
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => onDelete(element.id)}
+          className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1"
+        >
+          <Trash2 size={12}/>
+        </button>
+      )}
     </div>
   );
 };
@@ -173,6 +191,7 @@ export const EditPDF: React.FC = () => {
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
   
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(1.0);
+  const selectedElement = elements.find((element) => element.id === selectedId) ?? null;
 
   const handleFilesSelected = async (files: File[]) => {
     if (files.length === 0) return;
@@ -181,10 +200,18 @@ export const EditPDF: React.FC = () => {
     setPdfDoc(doc);
   };
 
+  useEffect(() => {
+    return () => {
+      if (pdfDoc?.destroy) {
+        void pdfDoc.destroy();
+      }
+    };
+  }, [pdfDoc]);
+
   const addText = () => {
     const newEl: EditorElement = {
       id: uuidv4(), type: 'text', pageIndex: 0, // Default to top of page 1
-      x: 0.1, y: 0.1, content: 'Text', fontSize: 16, color: '#000'
+      x: 0.1, y: 0.1, content: 'Text', fontSize: 16, color: '#000000'
     };
     setElements([...elements, newEl]);
   };
@@ -194,26 +221,38 @@ export const EditPDF: React.FC = () => {
 
   const handleSave = async () => {
     if (!file) return;
-    setStatus({ isProcessing: true, progress: 0, message: 'Saving...' });
-    const bytes = await savePDFWithAnnotations(file.file, elements);
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `edited-${file.name}`;
-    a.click();
-    setStatus({ isProcessing: false, progress: 0, message: '' });
+    setStatus({ isProcessing: true, progress: 20, message: 'Saving annotations...' });
+    try {
+      const bytes = await savePDFWithAnnotations(file.file, elements);
+      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `edited-${file.name}`);
+      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+    } catch (error) {
+      console.error(error);
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Failed to save edited PDF' });
+    }
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 h-[calc(100vh-80px)] flex flex-col">
-       <div className="flex items-center justify-between mb-4">
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-4 h-[100dvh] min-h-[100dvh] flex flex-col">
+       <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div><Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800">← Back</Link><h1 className="text-2xl font-bold">Edit PDF <span className="text-xs bg-green-100 text-green-700 px-2 rounded">Safe</span></h1></div>
           {file && (
              <div className="flex gap-2">
                 <button onClick={addText} className="px-4 py-2 bg-slate-100 rounded-lg font-bold flex gap-2"><Type size={18}/> Text</button>
-                <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex gap-2"><Save size={18}/> Save</button>
+                <button onClick={handleSave} disabled={status.isProcessing} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex gap-2 disabled:opacity-50"><Save size={18}/> Save</button>
              </div>
+          )}
+          </div>
+          {selectedElement?.type === 'text' && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 flex items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Selected text</span>
+              <input
+                value={selectedElement.content}
+                onChange={(event) => updateElement(selectedElement.id, { content: event.target.value })}
+                className="flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm outline-none focus:border-blue-500"
+              />
+            </div>
           )}
        </div>
 
@@ -230,7 +269,7 @@ export const EditPDF: React.FC = () => {
                   <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-8 flex flex-col items-center">
+                <div className="flex-1 overflow-auto custom-scrollbar p-4 sm:p-8 flex flex-col items-start sm:items-center">
                     {Array.from({ length: pdfDoc?.numPages || 0 }).map((_, i) => (
                       <PDFPage 
                           key={i} pageIndex={i} pdfDoc={pdfDoc}
@@ -245,6 +284,7 @@ export const EditPDF: React.FC = () => {
              </div>
           )}
        </AnimatePresence>
+       <StatusToast status={status} />
     </div>
   );
 };

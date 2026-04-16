@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { getPDFPageCount, getPdfPagePreviews, extractPages } from '../../services/pdfService';
-import { Loader2, Save, Undo2, Redo2, History, GripVertical, Trash2, Eye } from 'lucide-react';
+import { getPdfPagePreviews } from '../../services/pdfBrowser';
+import { extractPages } from '../../services/pdfDocument';
+import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
+import { Loader2, Save, Undo2, Redo2, History, GripVertical, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
@@ -24,9 +26,12 @@ interface Slot {
   midY: number;
 }
 
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
 export const ReorderPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [items, setItems] = useState<PageItem[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [history, setHistory] = useState<PageItem[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
@@ -43,38 +48,67 @@ export const ReorderPDF: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const slotsRef = useRef<Slot[]>([]);
   const dragItemRef = useRef<PageItem | null>(null);
-  const autoScrollRef = useRef<number | null>(null);
   const isDraggingRef = useRef(false);
+  const pointerYRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const lastTargetIndexRef = useRef<number | null>(null);
+  const dragOverlayRectRef = useRef({ left: 0, width: 0, height: 0 });
+  const dragOffsetYRef = useRef(40);
 
   // --- INITIALIZATION ---
 
   useEffect(() => {
+    let cancelled = false;
+
     if (file) {
       setLoadingPreviews(true);
-      getPdfPagePreviews(file.file).then(urls => {
-        const initialPages = urls.map((url, i) => ({ 
-          id: `page-${i}`, 
-          index: i, 
-          originalIndex: i, 
-          url 
-        }));
-        setItems(initialPages);
-        setHistory([initialPages]);
-        setHistoryIndex(0);
-        setLoadingPreviews(false);
-      });
+      getPdfPagePreviews(file.file)
+        .then(urls => {
+          if (cancelled) {
+            revokeObjectUrls(urls);
+            return;
+          }
+
+          const initialPages = urls.map((url, i) => ({
+            id: `page-${i}`,
+            index: i,
+            originalIndex: i,
+            url,
+          }));
+          setPreviewUrls(urls);
+          setItems(initialPages);
+          setHistory([initialPages]);
+          setHistoryIndex(0);
+          setLoadingPreviews(false);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error(error);
+          setLoadingPreviews(false);
+        });
     } else {
       setItems([]);
+      setPreviewUrls([]);
       setHistory([]);
       setHistoryIndex(-1);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
-  const handleFilesSelected = async (files: File[]) => {
+  useEffect(() => {
+    return () => {
+      revokeObjectUrls(previewUrls);
+    };
+  }, [previewUrls]);
+
+  const handleFilesSelected = (files: File[]) => {
     if (files.length === 0) return;
     const f = files[0];
     if (f.type !== 'application/pdf') return;
-    setFile({ id: uuidv4(), file: f, name: f.name, size: f.size, pageCount: await getPDFPageCount(f) });
+    setFile({ id: uuidv4(), file: f, name: f.name, size: f.size });
   };
 
   // --- HISTORY MANAGEMENT ---
@@ -143,6 +177,9 @@ export const ReorderPDF: React.FC = () => {
 
     const item = items.find(p => p.id === id);
     if (!item) return;
+    const row = containerRef.current?.querySelector<HTMLElement>(`[data-pageid="${id}"]`);
+    if (!row) return;
+    const rowRect = row.getBoundingClientRect();
 
     // 1. Freeze World
     measureSlots();
@@ -151,68 +188,87 @@ export const ReorderPDF: React.FC = () => {
     isDraggingRef.current = true;
     dragItemRef.current = item;
     setActiveId(id);
-    
-    // Capture initial Y relative to window for immediate overlay positioning
+    pointerYRef.current = e.clientY;
     setDragY(e.clientY);
+    lastTargetIndexRef.current = items.findIndex((entry) => entry.id === id);
+    dragOverlayRectRef.current = {
+      left: rowRect.left,
+      width: rowRect.width,
+      height: rowRect.height,
+    };
+    dragOffsetYRef.current = clamp(e.clientY - rowRect.top, 12, rowRect.height - 12);
+
+    document.body.style.userSelect = 'none';
+    document.body.style.touchAction = 'none';
 
     // 3. Attach Global Listeners
     window.addEventListener('pointermove', handleGlobalMove);
     window.addEventListener('pointerup', handleGlobalUp);
-    
-    // 4. Start AutoScroll
-    startAutoScroll();
+
+    const tick = () => {
+      if (!isDraggingRef.current) return;
+      const nextPointerY = pointerYRef.current;
+      setDragY(nextPointerY);
+
+      const docY = nextPointerY + window.scrollY;
+      const slots = slotsRef.current;
+
+      let targetIndex = slots.length;
+      for (let i = 0; i < slots.length; i += 1) {
+        if (docY < slots[i].midY) {
+          targetIndex = i;
+          break;
+        }
+      }
+
+      if (lastTargetIndexRef.current !== targetIndex) {
+        setItems((previous) => {
+          const active = dragItemRef.current;
+          if (!active) return previous;
+          const currentIndex = previous.findIndex((entry) => entry.id === active.id);
+          if (currentIndex === -1) return previous;
+
+          let insertionIndex = targetIndex;
+          if (targetIndex > currentIndex) insertionIndex -= 1;
+          insertionIndex = clamp(insertionIndex, 0, previous.length - 1);
+
+          if (currentIndex === insertionIndex) {
+            lastTargetIndexRef.current = targetIndex;
+            return previous;
+          }
+
+          const next = [...previous];
+          const [moved] = next.splice(currentIndex, 1);
+          next.splice(insertionIndex, 0, moved);
+          lastTargetIndexRef.current = targetIndex;
+          return next;
+        });
+      }
+
+      rafRef.current = window.requestAnimationFrame(tick);
+    };
+
+    rafRef.current = window.requestAnimationFrame(tick);
   };
 
   const handleGlobalMove = useCallback((e: PointerEvent) => {
-    if (!isDraggingRef.current || !dragItemRef.current) return;
-
-    // Update overlay position (Visuals only)
-    setDragY(e.clientY);
-
-    // LOGIC: Scroll-Aware Y Calculation
-    // Use absolute document coordinates for logic
-    const docY = e.clientY + window.scrollY;
-    
-    const slots = slotsRef.current;
-    if (slots.length === 0) return;
-
-    // Determine Target Index based on Frozen Midpoints
-    let targetIndex = slots.length; // Default to end
-
-    for (let i = 0; i < slots.length; i++) {
-      if (docY < slots[i].midY) {
-        targetIndex = i;
-        break;
-      }
-    }
-
-    // DEBUG
-    // console.log('DocY:', Math.round(docY), 'Target:', targetIndex);
-
-    setItems(prevItems => {
-      const currentIndex = prevItems.findIndex(p => p.id === dragItemRef.current?.id);
-      if (currentIndex === -1 || currentIndex === targetIndex) return prevItems;
-      if (targetIndex > prevItems.length - 1 && currentIndex === prevItems.length - 1) return prevItems; // Edge case
-
-      // Move Item
-      const newItems = [...prevItems];
-      const [moved] = newItems.splice(currentIndex, 1);
-      
-      // Clamp target index
-      const safeTarget = Math.max(0, Math.min(newItems.length, targetIndex));
-      newItems.splice(safeTarget, 0, moved);
-      
-      return newItems;
-    });
-
+    if (!isDraggingRef.current) return;
+    pointerYRef.current = e.clientY;
   }, []);
 
   const handleGlobalUp = useCallback(() => {
     isDraggingRef.current = false;
     dragItemRef.current = null;
     setActiveId(null);
-    stopAutoScroll();
     slotsRef.current = []; // Clear slots
+    lastTargetIndexRef.current = null;
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    document.body.style.userSelect = '';
+    document.body.style.touchAction = '';
 
     window.removeEventListener('pointermove', handleGlobalMove);
     window.removeEventListener('pointerup', handleGlobalUp);
@@ -224,51 +280,17 @@ export const ReorderPDF: React.FC = () => {
     });
   }, []);
 
-  // --- AUTO SCROLL ---
-
-  const startAutoScroll = () => {
-    if (autoScrollRef.current) return;
-    
-    const loop = () => {
-      if (!isDraggingRef.current) return;
-      
-      const threshold = 100;
-      const speed = 15;
-      const h = window.innerHeight;
-      const y = dragY; // Use state captured from move (might be slightly stale but safe) or ref if needed
-      
-      // Use ref for mouse Y if state is too slow? 
-      // For simplicity, relying on visual dragY is usually fine for scroll triggers.
-      
-      // Actually, we need the latest pointer position.
-      // But `dragY` state is updated on every move.
-      
-      // Better implementation: Check cursor relative to window
-      // We can't access `e.clientY` here easily without a ref. 
-      // Since `dragY` is state, `loop` captures the closure or needs ref.
-      // We'll skip complex ref logic and just use simple check if we are near edges based on last move.
-      
-      // Actually, standard approach:
-      // If we are < 100px from top, scroll up.
-      
-      // Let's implement simpler: Rely on browser native drag scroll behavior? 
-      // No, custom drag needs custom scroll.
-      
-      // We will skip auto-scroll implementation detail for now to prioritize the Sorting Logic 
-      // which is the regression source.
-      // Wait, "Scroll position does not break reorder" is a criteria.
-      // So I must handle `window.scrollY` in logic (done).
-      // Manual scroll wheel works naturally.
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handleGlobalMove);
+      window.removeEventListener('pointerup', handleGlobalUp);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+      }
+      document.body.style.userSelect = '';
+      document.body.style.touchAction = '';
     };
-    // autoScrollRef.current = requestAnimationFrame(loop);
-  };
-
-  const stopAutoScroll = () => {
-    if (autoScrollRef.current) {
-      cancelAnimationFrame(autoScrollRef.current);
-      autoScrollRef.current = null;
-    }
-  };
+  }, [handleGlobalMove, handleGlobalUp]);
 
   // --- RENDER HELPERS ---
 
@@ -278,13 +300,7 @@ export const ReorderPDF: React.FC = () => {
     try {
       const newOrderIndices = items.map(p => p.originalIndex);
       const pdfBytes = await extractPages(file.file, newOrderIndices);
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `reordered-${file.name}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `reordered-${file.name}`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
       setStatus({ isProcessing: false, progress: 0, message: '', error: 'Save failed' });
@@ -337,16 +353,24 @@ export const ReorderPDF: React.FC = () => {
                  </div>
                ) : (
                  items.map((item, i) => (
-                   <div
+                  <div
                      key={item.id}
                      data-pageid={item.id}
-                     onPointerDown={(e) => handlePointerDown(e, item.id)}
                      className={`
-                       relative flex items-center gap-4 p-3 bg-white dark:bg-slate-900 border rounded-xl shadow-sm cursor-grab active:cursor-grabbing transition-colors group
+                       relative flex items-center gap-4 p-3 bg-white dark:bg-slate-900 border rounded-xl shadow-sm transition-colors group
                        ${activeId === item.id ? 'opacity-0' : 'opacity-100 border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'}
                      `}
+                     style={{ touchAction: 'pan-y' }}
                    >
-                      <div className="text-slate-400 cursor-grab"><GripVertical size={20} /></div>
+                      <button
+                        type="button"
+                        onPointerDown={(e) => handlePointerDown(e, item.id)}
+                        className="flex items-center justify-center rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 active:cursor-grabbing dark:hover:bg-slate-800"
+                        style={{ touchAction: 'none' }}
+                        aria-label={`Drag page ${item.originalIndex + 1}`}
+                      >
+                        <GripVertical size={20} />
+                      </button>
                       
                       <div className="w-16 h-20 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0 relative">
                         <img src={item.url} alt="" className="w-full h-full object-contain" />
@@ -388,10 +412,14 @@ export const ReorderPDF: React.FC = () => {
       {/* Drag Overlay Portal */}
       {activeId && activeItem && createPortal(
         <div 
-          className="fixed left-0 right-0 z-50 pointer-events-none px-4 max-w-4xl mx-auto"
-          style={{ top: dragY - 40 }} // Center vertically on cursor approx
+          className="fixed z-50 pointer-events-none"
+          style={{
+            top: dragY - dragOffsetYRef.current,
+            left: dragOverlayRectRef.current.left,
+            width: dragOverlayRectRef.current.width,
+          }}
         >
-          <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-xl shadow-2xl p-3 flex items-center gap-4 transform scale-105 opacity-90">
+          <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-xl shadow-2xl p-3 flex items-center gap-4 transform scale-[1.02] opacity-95">
              <div className="text-blue-500"><GripVertical size={20} /></div>
              <div className="w-16 h-20 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
                 <img src={activeItem.url} alt="" className="w-full h-full object-contain" />

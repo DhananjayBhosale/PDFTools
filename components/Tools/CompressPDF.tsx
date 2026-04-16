@@ -2,8 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { compressPDFAdaptive, calculateTargetSize, analyzePDF, CompressionLevel, getAdaptiveConfig, AdaptiveConfig } from '../../services/pdfService';
-import { Layers, ArrowRight, Loader2, CheckCircle2, TrendingDown, AlertTriangle, ShieldAlert, Zap, EyeOff, ThumbsUp, Eye } from 'lucide-react';
+import { compressPDFAdaptive, calculateTargetSize, analyzePDF, type CompressionLevel, getAdaptiveConfig, type AdaptiveConfig } from '../../services/pdfBrowser';
+import { downloadBlob } from '../../services/pdfShared';
+import { Layers, ArrowRight, Loader2, CheckCircle2, TrendingDown, AlertTriangle, ShieldAlert, Zap, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
@@ -18,7 +19,7 @@ const faqItems: FAQItem[] = [
   },
   {
     question: "Are my files uploaded to a server?",
-    answer: "No. ZenPDF is a client-side tool. Compression happens entirely within your web browser using WebAssembly. Your files are private."
+    answer: "No. PDF Chef is a client-side tool. Compression happens entirely in your browser. Your files are not uploaded to a server for processing."
   },
   {
     question: "Why is the reduction 0%?",
@@ -26,7 +27,7 @@ const faqItems: FAQItem[] = [
   },
   {
     question: "Can I compress text-heavy PDFs?",
-    answer: "Yes, our algorithm detects text-heavy documents and optimizes font embedding and structure rather than just downsampling images."
+    answer: "Text-heavy PDFs usually compress less because the current build is image and raster based. Scan-heavy documents will usually shrink more."
   }
 ];
 
@@ -119,7 +120,8 @@ export const CompressPDF: React.FC = () => {
         (p) => setStatus(prev => ({ ...prev, progress: p, message: p < 50 ? 'Pass 1: Compressing...' : 'Pass 2: Optimizing...' })),
         overrideSafety,
         customConfig, // NEW: Pass custom config if confirmed from preview
-        flatten
+        flatten,
+        analysis.isTextHeavy,
       );
       
       // If blocked by service (double safety), shouldn't happen if we handled it in preview, but fallback:
@@ -148,13 +150,7 @@ export const CompressPDF: React.FC = () => {
       });
 
       if (!isUnchanged && resultObj.data.length > 0) {
-        const blob = new Blob([resultObj.data], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `compressed-${level}-${file.name}`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        downloadBlob(new Blob([resultObj.data], { type: 'application/pdf' }), `compressed-${level}-${file.name}`);
       }
       
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
@@ -172,14 +168,14 @@ export const CompressPDF: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto py-12 px-4 relative">
       <SEOHead 
-        title="Compress PDF - Reduce File Size Online | ZenPDF"
-        description="Reduce PDF file size without losing quality. Adaptive compression directly in your browser. Private, secure, and offline-ready."
+        title="Compress PDF - Reduce File Size Online | PDF Chef"
+        description="Reduce PDF file size with browser-based compression and preview-first controls. Private and client-side."
       />
 
       <div className="mb-8">
          <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Compress PDF</h1>
-         <p className="text-slate-500 dark:text-slate-400">Adaptive compression. Smart quality preservation.</p>
+         <p className="text-slate-500 dark:text-slate-400">Browser-based compression with preview-first quality controls.</p>
       </div>
 
       <AnimatePresence mode="wait">
@@ -325,8 +321,8 @@ export const CompressPDF: React.FC = () => {
             {!result && (
               <div className="mb-8 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div>
-                  <div className="font-bold text-sm text-slate-800 dark:text-slate-200">Flatten PDF (Rasterize)</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Required for high compression. Uncheck to keep text selectable (minimal compression).</div>
+                  <div className="font-bold text-sm text-slate-800 dark:text-slate-200">Rasterize pages for stronger compression</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Turn this off to preserve selectable text and keep changes lighter.</div>
                 </div>
                 <button 
                   onClick={() => setFlatten(!flatten)}
@@ -433,10 +429,6 @@ export const CompressPDF: React.FC = () => {
             isTextHeavy={analysis.isTextHeavy}
             onClose={() => setShowPreview(false)}
             onConfirm={(finalConfig) => { setShowPreview(false); executeCompression(true, finalConfig); }}
-            onImprove={() => { 
-              setLevel('recommended'); 
-              setShowPreview(false); 
-            }}
           />
         )}
       </AnimatePresence>

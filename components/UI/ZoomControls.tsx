@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Minus, Plus, RotateCcw, Search } from 'lucide-react';
+import { Minus, Plus, RotateCcw } from 'lucide-react';
 
 interface ZoomControlsProps {
   zoom: number;

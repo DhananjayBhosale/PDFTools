@@ -1,0 +1,202 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --chef-bg: #f6f1e8;
+  --chef-fg: #0f172a;
+  --chef-muted: #5f6877;
+  --chef-grid-color: rgba(15, 23, 42, 0.07);
+  --chef-selection: rgba(34, 211, 238, 0.24);
+}
+
+.dark {
+  color-scheme: dark;
+  --chef-bg: #07111b;
+  --chef-fg: #f8fafc;
+  --chef-muted: #94a3b8;
+  --chef-grid-color: rgba(148, 163, 184, 0.08);
+  --chef-selection: rgba(34, 211, 238, 0.2);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  background: var(--chef-bg);
+  color: var(--chef-fg);
+  font-family: "Manrope", "Inter", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--chef-selection);
+}
+
+.chef-display {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+}
+
+.chef-grid {
+  background-image:
+    linear-gradient(to right, var(--chef-grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--chef-grid-color) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.12));
+}
+
+.chef-ambient {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(251, 191, 36, 0.16), transparent 24%),
+    radial-gradient(circle at 86% 14%, rgba(34, 211, 238, 0.2), transparent 30%),
+    radial-gradient(circle at 72% 82%, rgba(14, 165, 233, 0.14), transparent 22%);
+  animation: chef-float 18s ease-in-out infinite alternate;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.9) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  background-color: rgba(148, 163, 184, 0.88);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.94);
+}
+
+.chef-slider {
+  --chef-slider-pct: 50%;
+  --chef-slider-track: #cbd5e1;
+  --chef-slider-fill: #2563eb;
+  --chef-slider-thumb-bg: #ffffff;
+  --chef-slider-thumb-ring: #2563eb;
+  position: relative;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chef-slider:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 4px;
+  border-radius: 9999px;
+}
+
+.chef-slider.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chef-slider__track,
+.chef-slider__fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+}
+
+.chef-slider__track {
+  width: 100%;
+  background: var(--chef-slider-track);
+}
+
+.chef-slider__fill {
+  width: var(--chef-slider-pct);
+  background: var(--chef-slider-fill);
+}
+
+.chef-slider__thumb {
+  position: absolute;
+  left: var(--chef-slider-pct);
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  border: 3px solid var(--chef-slider-thumb-ring);
+  border-radius: 9999px;
+  background: var(--chef-slider-thumb-bg);
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.16);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.chef-slider:not(.is-disabled):hover .chef-slider__thumb,
+.chef-slider:not(.is-disabled):focus-visible .chef-slider__thumb,
+.chef-slider.is-dragging:not(.is-disabled) .chef-slider__thumb {
+  transform: translate(-50%, -50%) scale(1.04);
+  box-shadow: 0 5px 16px rgba(37, 99, 235, 0.22);
+}
+
+.dark .chef-slider {
+  --chef-slider-track: rgba(148, 163, 184, 0.34);
+  --chef-slider-fill: #60a5fa;
+  --chef-slider-thumb-bg: #f8fafc;
+  --chef-slider-thumb-ring: #60a5fa;
+}
+
+html:focus-within {
+  scroll-behavior: smooth;
+}
+
+@keyframes chef-float {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(0, -1.5%, 0) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+}

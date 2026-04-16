@@ -11,7 +11,13 @@ interface SEOHeadProps {
 
 export const SEOHead: React.FC<SEOHeadProps> = ({ title, description, path, keywords }) => {
   const location = useLocation();
-  const currentUrl = `https://zenpdf.app${path || location.pathname}`;
+  const origin = typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://pdfchef.dhananjaytech.app';
+  const normalizedPath = (path || location.pathname || '/').startsWith('/')
+    ? (path || location.pathname || '/')
+    : `/${path || location.pathname || '/'}`;
+  const currentUrl = `${origin}/#${normalizedPath}`;
 
   useEffect(() => {
     // Update Title
@@ -26,6 +32,7 @@ export const SEOHead: React.FC<SEOHeadProps> = ({ title, description, path, keyw
       'twitter:title': title,
       'twitter:description': description,
       'twitter:url': currentUrl,
+      ...(keywords?.length ? { keywords: keywords.join(', ') } : {}),
     };
 
     Object.entries(metaTags).forEach(([name, content]) => {

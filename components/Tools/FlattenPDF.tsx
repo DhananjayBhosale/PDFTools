@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { flattenPDF } from '../../services/pdfService';
+import { flattenPDF } from '../../services/pdfDocument';
+import { downloadBlob } from '../../services/pdfShared';
 import { Maximize, Loader2, FileCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,13 +22,7 @@ export const FlattenPDF: React.FC = () => {
     setStatus({ isProcessing: true, progress: 10, message: 'Flattening forms...' });
     try {
       const pdfBytes = await flattenPDF(file.file);
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `flattened-${file.name}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `flattened-${file.name}`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (e) { setStatus({ isProcessing: false, progress: 0, message: '', error: 'Error flattening' }); }
   };

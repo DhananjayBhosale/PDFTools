@@ -1,9 +1,9 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Loader2 } from 'lucide-react';
-import { loadPDFDocument, renderPageAsImage } from '../../services/pdfService';
-import { motion, AnimatePresence } from 'framer-motion';
+import { X, Loader2, ArrowLeft, ArrowRight, Move } from 'lucide-react';
+import { loadPDFDocument, renderPageAsImage } from '../../services/pdfBrowser';
+import { motion } from 'framer-motion';
 import { ZoomControls } from './ZoomControls';
 import { useZoom } from '../../hooks/useZoom';
 
@@ -16,50 +16,137 @@ interface PDFPreviewModalProps {
 
 export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ file, pageIndex, pageLabel, onClose }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [pdfDoc, setPdfDoc] = useState<any | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(pageIndex);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
-  const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(1.0, 0.5, 3.0);
+  const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(1.0, 0.5, 5.0);
   const [error, setError] = useState<string | null>(null);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const imageUrlRef = useRef<string | null>(null);
+  const pdfDocRef = useRef<any | null>(null);
 
   // Close on ESC
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') setCurrentPageIndex((value) => Math.max(0, value - 1));
+      if (e.key === 'ArrowRight') setCurrentPageIndex((value) => Math.min(Math.max(0, totalPages - 1), value + 1));
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [onClose, totalPages]);
 
-  // Load High-Res Page
+  useEffect(() => {
+    setCurrentPageIndex(pageIndex);
+  }, [pageIndex]);
+
+  useEffect(() => {
+    if (zoom <= 1) {
+      setPan({ x: 0, y: 0 });
+    }
+  }, [zoom]);
+
+  // Load document once
   useEffect(() => {
     let active = true;
-    const load = async () => {
+    (async () => {
       try {
-        setLoading(true);
+        setError(null);
         const doc = await loadPDFDocument(file);
         if (!active) return;
-        
-        // Render at scale 2.0 for crispness on typical screens
-        const { dataUrl } = await renderPageAsImage(doc, pageIndex, {
-          scale: 2.0,
-          format: 'image/jpeg',
-          quality: 0.9
-        });
-        
-        if (active) {
-          setImageUrl(dataUrl);
-          setLoading(false);
-        }
+        pdfDocRef.current = doc;
+        setPdfDoc(doc);
+        setTotalPages(doc?.numPages ?? 0);
       } catch (err) {
         console.error(err);
         if (active) {
-          setError("Failed to render preview.");
-          setLoading(false);
+          setError('Failed to load PDF.');
         }
       }
+    })();
+    return () => {
+      active = false;
+      if (pdfDocRef.current?.destroy) {
+        void pdfDocRef.current.destroy();
+      }
+      pdfDocRef.current = null;
+      setPdfDoc(null);
     };
-    load();
-    return () => { active = false; };
-  }, [file, pageIndex]);
+  }, [file]);
+
+  // Load active page
+  useEffect(() => {
+    let active = true;
+    if (!pdfDoc) return undefined;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const renderScale = zoom >= 2 ? 2.6 : 2.0;
+        const { objectUrl } = await renderPageAsImage(pdfDoc, currentPageIndex, {
+          scale: renderScale,
+          format: 'image/jpeg',
+          quality: 0.92,
+        });
+        if (!active) {
+          if (objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        if (imageUrlRef.current && imageUrlRef.current.startsWith('blob:')) {
+          URL.revokeObjectURL(imageUrlRef.current);
+        }
+        imageUrlRef.current = objectUrl;
+        setImageUrl(objectUrl);
+      } catch (err) {
+        console.error(err);
+        if (active) {
+          setError('Failed to render preview.');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [pdfDoc, currentPageIndex, zoom]);
+
+  useEffect(() => {
+    setPan({ x: 0, y: 0 });
+  }, [currentPageIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (imageUrlRef.current && imageUrlRef.current.startsWith('blob:')) {
+        URL.revokeObjectURL(imageUrlRef.current);
+      }
+      imageUrlRef.current = null;
+    };
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (zoom <= 1) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsPanning(true);
+    const startX = e.clientX - pan.x;
+    const startY = e.clientY - pan.y;
+
+    const onMove = (moveEvent: PointerEvent) => {
+      setPan({ x: moveEvent.clientX - startX, y: moveEvent.clientY - startY });
+    };
+
+    const onUp = (upEvent: PointerEvent) => {
+      setIsPanning(false);
+      e.currentTarget.releasePointerCapture(upEvent.pointerId);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   return createPortal(
     <motion.div 
@@ -75,9 +162,27 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ file, pageInde
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900 z-10">
-          <h3 className="text-white font-bold text-lg">{pageLabel}</h3>
+          <h3 className="text-white font-bold text-lg">
+            {pageLabel} • Page {currentPageIndex + 1}{totalPages > 0 ? ` of ${totalPages}` : ''}
+          </h3>
           <div className="flex items-center gap-4">
-            <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
+            <button
+              onClick={() => setCurrentPageIndex((value) => Math.max(0, value - 1))}
+              disabled={currentPageIndex <= 0}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40"
+              aria-label="Previous page"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentPageIndex((value) => Math.min(Math.max(0, totalPages - 1), value + 1))}
+              disabled={currentPageIndex >= Math.max(0, totalPages - 1)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40"
+              aria-label="Next page"
+            >
+              <ArrowRight size={18} />
+            </button>
+            <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} max={5} />
             <div className="w-px h-6 bg-slate-700 mx-2" />
             <button 
               onClick={onClose}
@@ -90,7 +195,10 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ file, pageInde
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 relative overflow-auto flex items-center justify-center p-8 bg-black/50 custom-scrollbar">
+        <div
+          className={`flex-1 relative overflow-hidden flex items-center justify-center p-8 bg-black/50 ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+          onPointerDown={handlePointerDown}
+        >
           {loading ? (
             <div className="flex flex-col items-center gap-3 text-slate-400">
               <Loader2 className="animate-spin" size={40} />
@@ -103,20 +211,26 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ file, pageInde
           ) : imageUrl ? (
             <div 
               style={{ 
-                transform: `scale(${zoom})`, 
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transformOrigin: 'center',
                 transition: 'transform 0.2s ease-out'
               }}
-              className="shadow-2xl"
+              className="flex max-h-full max-w-full items-center justify-center shadow-2xl"
             >
               <img 
                 src={imageUrl} 
                 alt={pageLabel} 
-                className="max-w-full max-h-none object-contain bg-white rounded-sm"
+                className="block max-h-full max-w-full object-contain bg-white rounded-sm"
                 draggable={false}
               />
             </div>
           ) : null}
+          {zoom > 1 && isPanning && (
+            <div className="absolute left-4 top-4 flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-xs text-white">
+              <Move size={12} />
+              Dragging
+            </div>
+          )}
         </div>
         
         {/* Footer Hint */}

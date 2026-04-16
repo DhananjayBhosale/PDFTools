@@ -2,9 +2,11 @@
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { ProcessingStatus } from '../../types';
-import { createPDFFromLayout, PDFPageLayout, PDFImageElement } from '../../services/pdfService';
-import { X, ArrowDown, Loader2, FileImage, LayoutTemplate, Plus, Trash2, Maximize2, Move, Undo2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { createPDFFromLayout, type PDFPageLayout } from '../../services/pdfDocument';
+import { getContainedImageSize, preparePdfImageAsset } from '../../services/imageBrowser';
+import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
+import { X, ArrowDown, Loader2, FileImage, Plus, Trash2, Move, Undo2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import { ZoomControls } from '../UI/ZoomControls';
@@ -12,22 +14,6 @@ import { useZoom } from '../../hooks/useZoom';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { createPortal } from 'react-dom';
 import { SEOHead } from '../SEO/SEOHead';
-import { FAQ, FAQItem } from '../UI/FAQ';
-
-const faqItems: FAQItem[] = [
-  {
-    question: "What image formats are supported?",
-    answer: "We support common formats including JPG, PNG, and WebP. You can mix multiple formats in a single PDF document."
-  },
-  {
-    question: "Can I rearrange the images?",
-    answer: "Yes, you can drag and drop images to reorder pages, or move images around freely on each page canvas to create custom layouts."
-  },
-  {
-    question: "Is the quality preserved?",
-    answer: "Yes, we embed the images directly into the PDF without aggressive re-compression, preserving the original quality as much as possible."
-  }
-];
 
 // Data Model
 interface ImageElement {
@@ -45,6 +31,26 @@ interface PageData {
   id: string;
   elements: ImageElement[];
 }
+
+const createImageElement = async (
+  file: File,
+  maxFraction: number,
+  position?: { x: number; y: number },
+): Promise<ImageElement> => {
+  const asset = await preparePdfImageAsset(file);
+  const { width, height } = getContainedImageSize(asset.aspectRatio, maxFraction);
+
+  return {
+    id: uuidv4(),
+    file: asset.file,
+    previewUrl: asset.previewUrl,
+    x: position ? position.x : (1 - width) / 2,
+    y: position ? position.y : (1 - height) / 2,
+    width,
+    height,
+    aspectRatio: asset.aspectRatio,
+  };
+};
 
 // --- SUB-COMPONENTS ---
 
@@ -71,8 +77,6 @@ const DraggableResizableImage: React.FC<{
       const pageHeight_px = rect.height;
 
       const dx = e.clientX - startRef.current.x;
-      
-      const initialW = startRef.current.w / pageWidth_px;
       const initialH = startRef.current.h / pageHeight_px;
       const initialX = startRef.current.ex / pageWidth_px;
       const initialY = startRef.current.ey / pageHeight_px;
@@ -223,13 +227,13 @@ export const ImageToPDF: React.FC = () => {
   const [pages, setPages] = useState<PageData[]>([]);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(1.0, 0.5, 1.5, 0.25);
+  const canvasViewportRef = useRef<HTMLDivElement>(null);
+  const [canvasViewportWidth, setCanvasViewportWidth] = useState(0);
   
   // Reorder Engine for Pages
-  const containerRef = useRef<HTMLDivElement>(null);
   const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder<PageData>({
     items: pages,
     onReorder: setPages,
-    containerRef,
     keyExtractor: p => p.id
   });
 
@@ -244,6 +248,7 @@ export const ImageToPDF: React.FC = () => {
     clientX: number;
     clientY: number;
   } | null>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
 
   const handleImageDragStart = useCallback((e: React.PointerEvent, pageId: string, element: ImageElement, containerRef: React.RefObject<HTMLDivElement>) => {
     e.stopPropagation();
@@ -335,67 +340,56 @@ export const ImageToPDF: React.FC = () => {
     };
   }, [activeImageDrag ? true : false]);
 
+  useEffect(() => {
+    const nextUrls = new Set(
+      pages.flatMap((page) => page.elements.map((element) => element.previewUrl)),
+    );
+
+    for (const url of previewUrlsRef.current) {
+      if (!nextUrls.has(url)) {
+        revokeObjectUrls([url]);
+      }
+    }
+
+    previewUrlsRef.current = nextUrls;
+  }, [pages]);
+
+  useEffect(() => {
+    return () => {
+      revokeObjectUrls(previewUrlsRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const node = canvasViewportRef.current;
+    if (!node) return;
+
+    const updateWidth = () => {
+      setCanvasViewportWidth(node.clientWidth);
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [pages.length]);
+
   // Initialize with pages if files dropped
   const handleFilesSelected = async (newFiles: File[]) => {
     const images = newFiles.filter(f => f.type.startsWith('image/'));
     if (images.length === 0) return;
     
     // Create a new page for each image by default (standard flow)
-    const newPages = await Promise.all(images.map(async (f: File) => {
-      let fileToUse = f;
-      let url = URL.createObjectURL(f);
-      
-      // Convert WebP or other non-standard formats to PNG for pdf-lib compatibility
-      if (f.type === 'image/webp' || !['image/jpeg', 'image/png'].includes(f.type)) {
-         const img = new Image();
-         img.src = url;
-         await new Promise<void>(r => { img.onload = () => r(); });
-         const canvas = document.createElement('canvas');
-         canvas.width = img.width;
-         canvas.height = img.height;
-         const ctx = canvas.getContext('2d');
-         ctx?.drawImage(img, 0, 0);
-         const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png'));
-         if (blob) {
-            fileToUse = new File([blob], f.name.replace(/\.[^/.]+$/, "") + ".png", { type: 'image/png' });
-            URL.revokeObjectURL(url);
-            url = URL.createObjectURL(fileToUse);
-         }
-      }
-
-      // Get dimensions to set initial aspect ratio
-      const img = new Image();
-      img.src = url;
-      await new Promise<void>(r => { img.onload = () => r(); });
-      
-      const aspect = img.width / img.height;
-      const pageAspect = 210 / 297;
-      
-      let initialWidth = 0.8;
-      let initialHeight = (initialWidth * pageAspect) / aspect;
-      
-      if (initialHeight > 0.8) {
-         initialHeight = 0.8;
-         initialWidth = (initialHeight * aspect) / pageAspect;
-      }
-      
-      const x = (1 - initialWidth) / 2;
-      const y = (1 - initialHeight) / 2;
-
-      return {
-        id: uuidv4(),
-        elements: [{
-          id: uuidv4(),
-          file: fileToUse,
-          previewUrl: url,
-          x,
-          y,
-          width: initialWidth,
-          height: initialHeight,
-          aspectRatio: aspect
-        }]
-      };
-    }));
+    const newPages = await Promise.all(images.map(async (file) => ({
+      id: uuidv4(),
+      elements: [await createImageElement(file, 0.8)],
+    })));
     
     setPages(prev => [...prev, ...newPages]);
   };
@@ -439,12 +433,7 @@ export const ImageToPDF: React.FC = () => {
       }));
       
       const pdfBytes = await createPDFFromLayout(layout);
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `layout-${Date.now()}.pdf`;
-      a.click();
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `layout-${Date.now()}.pdf`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (e) {
       console.error(e);
@@ -453,31 +442,37 @@ export const ImageToPDF: React.FC = () => {
   };
 
   const activePage = pages.find(p => p.id === activeId);
+  const measuredCanvasWidth = canvasViewportWidth || (typeof window !== 'undefined' ? window.innerWidth : 794);
+  const usableCanvasWidth = Math.max(240, measuredCanvasWidth - (measuredCanvasWidth < 640 ? 32 : 96));
+  const basePageWidth = Math.min(794, usableCanvasWidth);
+  const renderedPageWidth = basePageWidth * zoom;
 
   return (
     <div className="w-full h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
        <SEOHead 
-        title="JPG to PDF Converter - Create PDFs from Images | ZenPDF"
+        title="JPG to PDF Converter - Create PDFs from Images | PDF Chef"
         description="Convert JPG, PNG, and WebP images to PDF documents. Drag and drop layout builder. Free, local, and secure."
        />
 
        {/* Header */}
-       <div className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 flex items-center justify-between flex-shrink-0 z-30 shadow-sm">
-         <div className="flex items-center gap-4">
+       <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 sm:px-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between flex-shrink-0 z-30 shadow-sm">
+         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             <Link to="/" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500">
                <Undo2 size={20} />
             </Link>
-            <div>
-               <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-none">Document Builder</h1>
+            <div className="min-w-0">
+               <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-none break-words">Document Builder</h1>
                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider font-bold">JPG to PDF</p>
             </div>
          </div>
-         <div className="flex items-center gap-3">
-            <button onClick={() => setPages([])} className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-4 py-2 rounded-lg text-sm font-bold transition-colors">Clear All</button>
+         <div className="flex w-full sm:w-auto items-stretch sm:items-center gap-2 sm:gap-3">
+            <button onClick={() => setPages([])} className="flex-1 sm:flex-none text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-2 rounded-lg text-sm font-bold transition-colors">
+              Clear All
+            </button>
             <button 
                onClick={handleConvert} 
                disabled={status.isProcessing || pages.length === 0}
-               className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+               className="flex-1 sm:flex-none px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
                {status.isProcessing ? <Loader2 className="animate-spin" size={18}/> : <ArrowDown size={18}/>} 
                <span>Export PDF</span>
@@ -492,9 +487,9 @@ export const ImageToPDF: React.FC = () => {
             </motion.div>
          </div>
       ) : (
-         <div className="flex-1 flex overflow-hidden">
+         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
             {/* Sidebar Controls */}
-            <div className="w-72 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 h-full z-20 shadow-xl">
+            <div className="w-full lg:w-72 flex flex-col bg-white dark:bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 max-h-[46vh] lg:max-h-none h-auto lg:h-full z-20 shadow-xl">
                <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar flex-1">
                   <section>
                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Document Actions</h3>
@@ -541,11 +536,14 @@ export const ImageToPDF: React.FC = () => {
             </div>
 
             {/* Main Canvas Scroll Area */}
-            <div ref={containerRef} className="flex-1 bg-slate-200/50 dark:bg-slate-950/50 overflow-auto custom-scrollbar relative p-12">
+            <div
+               ref={canvasViewportRef}
+               className="flex-1 bg-slate-200/50 dark:bg-slate-950/50 overflow-auto custom-scrollbar relative p-3 sm:p-6 lg:p-12"
+            >
                <div 
                   className="flex flex-col items-center gap-16 pb-64 transition-all duration-200 mx-auto" 
                   style={{ 
-                    width: `calc(210mm * ${zoom})`,
+                    width: renderedPageWidth,
                     minHeight: '100%'
                   }}
                >
@@ -554,14 +552,14 @@ export const ImageToPDF: React.FC = () => {
                         key={page.id}
                         ref={(el) => registerItem(page.id, el)}
                         className={`relative group shadow-2xl transition-shadow hover:shadow-blue-500/10 ${activeId === page.id ? 'opacity-0' : 'opacity-100'}`}
-                        style={{ width: '210mm' }}
+                        style={{ width: renderedPageWidth }}
                      >
-                        {/* Page Header Actions */}
-                        <div className="absolute -top-10 left-0 right-0 flex items-center justify-between px-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                           <div className="flex items-center gap-3">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
+                           <div className="flex flex-wrap items-center gap-2">
                               <div 
                                  className="flex items-center gap-2 cursor-grab active:cursor-grabbing text-slate-400 hover:text-blue-500 bg-white dark:bg-slate-900 px-3 py-1 rounded-full shadow-sm border border-slate-200 dark:border-slate-800 text-xs font-bold"
                                  onPointerDown={(e) => dragHandlers.onPointerDown(e, page.id)}
+                                 style={{ touchAction: 'none' }}
                               >
                                  <Move size={14} /> Page {i + 1}
                               </div>
@@ -576,53 +574,10 @@ export const ImageToPDF: React.FC = () => {
                                     className="absolute inset-0 opacity-0 cursor-pointer" 
                                     onChange={async e => {
                                        if (e.target.files) {
-                                          const files = Array.from(e.target.files);
-                                          const newElements = await Promise.all(files.map(async (f: File) => {
-                                             let fileToUse = f;
-                                             let url = URL.createObjectURL(f);
-
-                                             if (f.type === 'image/webp' || !['image/jpeg', 'image/png'].includes(f.type)) {
-                                                const img = new Image();
-                                                img.src = url;
-                                                await new Promise<void>(r => { img.onload = () => r(); });
-                                                const canvas = document.createElement('canvas');
-                                                canvas.width = img.width;
-                                                canvas.height = img.height;
-                                                const ctx = canvas.getContext('2d');
-                                                ctx?.drawImage(img, 0, 0);
-                                                const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png'));
-                                                if (blob) {
-                                                   fileToUse = new File([blob], f.name.replace(/\.[^/.]+$/, "") + ".png", { type: 'image/png' });
-                                                   URL.revokeObjectURL(url);
-                                                   url = URL.createObjectURL(fileToUse);
-                                                }
-                                             }
-
-                                             const img = new Image();
-                                             img.src = url;
-                                             await new Promise<void>(r => { img.onload = () => r(); });
-                                             const aspect = img.width / img.height;
-                                             const pageAspect = 210 / 297;
-                                             
-                                             let initialWidth = 0.4;
-                                             let initialHeight = (initialWidth * pageAspect) / aspect;
-                                             
-                                             if (initialHeight > 0.4) {
-                                                initialHeight = 0.4;
-                                                initialWidth = (initialHeight * aspect) / pageAspect;
-                                             }
-                                             
-                                             return {
-                                                id: uuidv4(),
-                                                file: fileToUse,
-                                                previewUrl: url,
-                                                x: 0.1,
-                                                y: 0.1,
-                                                width: initialWidth,
-                                                height: initialHeight,
-                                                aspectRatio: aspect
-                                             };
-                                          }));
+                                         const files = Array.from(e.target.files) as File[];
+                                          const newElements = await Promise.all(
+                                            files.map((file) => createImageElement(file, 0.4, { x: 0.1, y: 0.1 })),
+                                          );
                                           setPages(prev => prev.map(p => p.id === page.id ? { ...p, elements: [...p.elements, ...newElements] } : p));
                                        }
                                     }} 

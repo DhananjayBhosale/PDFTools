@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { protectPDF, getPDFPageCount } from '../../services/pdfService';
-import { Lock, FileText, Loader2, ShieldCheck } from 'lucide-react';
+import { protectPDF } from '../../services/pdfDocument';
+import { downloadBlob } from '../../services/pdfShared';
+import { Lock, Loader2, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
+import { StatusToast } from '../UI/StatusToast';
 
 export const SecurityPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
 
-  const handleFilesSelected = async (files: File[]) => {
+  const handleFilesSelected = (files: File[]) => {
     if (files.length === 0) return;
     const f = files[0];
     if (f.type !== 'application/pdf') return;
@@ -22,7 +24,6 @@ export const SecurityPDF: React.FC = () => {
       file: f,
       name: f.name,
       size: f.size,
-      pageCount: await getPDFPageCount(f)
     });
   };
 
@@ -32,20 +33,10 @@ export const SecurityPDF: React.FC = () => {
     setStatus({ isProcessing: true, progress: 10, message: 'Encrypting...' });
     
     try {
-      await new Promise(r => setTimeout(r, 800)); // UX delay
       const pdfBytes = await protectPDF(file.file, password);
       
-      setStatus({ isProcessing: true, progress: 100, message: 'Done!' });
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `protected-${file.name}`;
-      a.click();
-      
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setStatus({ isProcessing: false, progress: 0, message: '' });
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `protected-${file.name}`);
+      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
       console.error(error);
       setStatus({ isProcessing: false, progress: 0, message: '', error: 'Encryption failed' });
@@ -102,6 +93,7 @@ export const SecurityPDF: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      <StatusToast status={status} />
     </div>
   );
 };

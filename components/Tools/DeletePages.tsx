@@ -1,32 +1,59 @@
 import React, { useState, useEffect } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { getPDFPageCount, getPdfPagePreviews, extractPages } from '../../services/pdfService';
-import { Trash2, Loader2, Undo2, CheckCircle2 } from 'lucide-react';
+import { getPdfPagePreviews } from '../../services/pdfBrowser';
+import { extractPages } from '../../services/pdfDocument';
+import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
+import { Trash2, Loader2, Undo2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
-import { PageThumbnail } from '../UI/PageThumbnail';
-
+import { StatusToast } from '../UI/StatusToast';
 export const DeletePages: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [previews, setPreviews] = useState<string[]>([]);
   const [pagesToDelete, setPagesToDelete] = useState<number[]>([]);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
+  const totalPages = previews.length || file?.pageCount || 0;
 
   useEffect(() => {
+    let cancelled = false;
+
     if (file) {
       setLoadingPreviews(true);
-      getPdfPagePreviews(file.file).then(urls => { setPreviews(urls); setLoadingPreviews(false); });
+      getPdfPagePreviews(file.file)
+        .then(urls => {
+          if (cancelled) {
+            revokeObjectUrls(urls);
+            return;
+          }
+          setPreviews(urls);
+          setLoadingPreviews(false);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error(error);
+          setLoadingPreviews(false);
+        });
     } else { setPreviews([]); setPagesToDelete([]); }
+
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
-  const handleFilesSelected = async (files: File[]) => {
+  useEffect(() => {
+    return () => {
+      revokeObjectUrls(previews);
+    };
+  }, [previews]);
+
+  const handleFilesSelected = (files: File[]) => {
     if (files.length === 0) return;
     const f = files[0];
     if (f.type !== 'application/pdf') return;
-    setFile({ id: uuidv4(), file: f, name: f.name, size: f.size, pageCount: await getPDFPageCount(f) });
+    setFile({ id: uuidv4(), file: f, name: f.name, size: f.size });
   };
 
   const togglePage = (idx: number) => {
@@ -37,17 +64,10 @@ export const DeletePages: React.FC = () => {
     if (!file) return;
     setStatus({ isProcessing: true, progress: 10, message: 'Removing pages...' });
     try {
-      const totalPages = file.pageCount || previews.length;
       const keepIndices = Array.from({ length: totalPages }, (_, i) => i).filter(i => !pagesToDelete.includes(i));
       const pdfBytes = await extractPages(file.file, keepIndices);
       
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `deleted-${file.name}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `deleted-${file.name}`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) { setStatus({ isProcessing: false, progress: 0, message: '', error: 'Failed to delete' }); }
   };
@@ -73,7 +93,7 @@ export const DeletePages: React.FC = () => {
                  <h3 className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{file.name}</h3>
                  <span className="text-sm text-rose-500 font-medium">{pagesToDelete.length} marked for deletion</span>
                </div>
-               <button onClick={handleDelete} disabled={pagesToDelete.length === 0 || status.isProcessing} className="px-6 py-2 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 transition-colors flex items-center gap-2 disabled:opacity-50">
+               <button onClick={handleDelete} disabled={loadingPreviews || pagesToDelete.length === 0 || status.isProcessing} className="px-6 py-2 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 transition-colors flex items-center gap-2 disabled:opacity-50">
                  {status.isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Trash2 size={18}/>} Apply Deletion
                </button>
             </div>
@@ -103,6 +123,7 @@ export const DeletePages: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      <StatusToast status={status} />
     </div>
   );
 };

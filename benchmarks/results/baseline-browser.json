@@ -1,0 +1,22 @@
+{
+  "baseUrl": "http://127.0.0.1:3001",
+  "metrics": {
+    "getPdfPagePreviews.text80": {
+      "durationMs": 1053.7,
+      "previewCount": 50
+    },
+    "renderPageAsImage.text80.page1": {
+      "durationMs": 259.9,
+      "width": 1224,
+      "height": 1584,
+      "sizeBytes": 172080
+    },
+    "compressPDFAdaptive.image12.recommended": {
+      "durationMs": 713.2,
+      "status": "success",
+      "compressedSize": 380698,
+      "projectedDPI": 144,
+      "strategyUsed": "Adaptive Rasterization"
+    }
+  }
+}

@@ -1,47 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://zenpdf.app/</loc>
+    <loc>https://pdfchef.dhananjaytech.app/</loc>
     <priority>1.0</priority>
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/merge</loc>
+    <loc>https://pdfchef.dhananjaytech.app/merge</loc>
     <priority>0.9</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/compress</loc>
+    <loc>https://pdfchef.dhananjaytech.app/compress</loc>
     <priority>0.9</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/split</loc>
+    <loc>https://pdfchef.dhananjaytech.app/split</loc>
     <priority>0.9</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/image-to-pdf</loc>
+    <loc>https://pdfchef.dhananjaytech.app/image-to-pdf</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/pdf-to-jpg</loc>
+    <loc>https://pdfchef.dhananjaytech.app/pdf-to-jpg</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/edit</loc>
+    <loc>https://pdfchef.dhananjaytech.app/edit</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/sign</loc>
+    <loc>https://pdfchef.dhananjaytech.app/sign</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://zenpdf.app/privacy-policy</loc>
+    <loc>https://pdfchef.dhananjaytech.app/privacy-policy</loc>
     <priority>0.5</priority>
     <changefreq>yearly</changefreq>
   </url>

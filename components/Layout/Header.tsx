@@ -1,35 +1,70 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { ExternalLink } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
-import { Zap } from 'lucide-react';
+
+const NavLink: React.FC<{ to: string; external?: boolean; children: React.ReactNode }> = ({ to, external = false, children }) => {
+  const className = 'flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white';
+
+  if (external) {
+    return (
+      <motion.a whileHover={{ y: -1 }} href={to} target="_blank" rel="noreferrer" className={className}>
+        {children}
+        <ExternalLink className="h-3 w-3" />
+      </motion.a>
+    );
+  }
+
+  return (
+    <motion.div whileHover={{ y: -1 }}>
+      <Link to={to} className={className}>
+        {children}
+      </Link>
+    </motion.div>
+  );
+};
 
 export const Header: React.FC = () => {
   return (
-    <header className="sticky top-0 z-50 w-full backdrop-blur-md border-b border-slate-200/50 dark:border-slate-800/50 bg-white/70 dark:bg-slate-950/70">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="relative w-8 h-8 flex items-center justify-center bg-slate-900 dark:bg-white rounded-lg text-white dark:text-slate-900 font-bold text-xl group-hover:scale-105 transition-transform duration-200">
-            Z
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-slate-900" />
-          </div>
-          <span className="font-bold text-lg tracking-tight text-slate-900 dark:text-white group-hover:opacity-80 transition-opacity">
-            ZenPDF
-          </span>
-          <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800">
-            BETA
-          </span>
-        </Link>
-        
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-400">
-            <Zap size={12} className="text-amber-500 fill-amber-500" />
-            <span>Local & Private</span>
-          </div>
-          <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 hidden md:block" />
-          <ThemeToggle />
+    <motion.header
+      initial={{ y: -100, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.6, ease: 'easeOut' }}
+      className="sticky top-0 z-50 border-b border-gray-200/50 bg-white/60 backdrop-blur-xl transition-colors duration-500 dark:border-gray-800 dark:bg-gray-950/80"
+    >
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between">
+          <motion.div whileHover={{ scale: 1.02 }} className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-500 shadow-lg dark:from-purple-500 dark:to-blue-600">
+                <span className="text-lg font-bold text-white">PC</span>
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                  PDF Chef
+                </h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Private PDF tools
+                </p>
+              </div>
+            </Link>
+          </motion.div>
+
+          <nav className="flex items-center gap-1">
+            <div className="hidden items-center gap-1 md:flex">
+              <NavLink to="/privacy-policy">Privacy</NavLink>
+              <NavLink to="/pdf-chef-privacy">Android privacy</NavLink>
+              <NavLink to="https://github.com/DhananjayBhosale/PDFTools" external>
+                Source
+              </NavLink>
+            </div>
+            <div className="ml-2">
+              <ThemeToggle />
+            </div>
+          </nav>
         </div>
       </div>
-    </header>
+    </motion.header>
   );
 };

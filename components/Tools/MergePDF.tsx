@@ -1,8 +1,9 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { mergePDFs, getPDFPageCount } from '../../services/pdfService';
+import { mergePDFs, getPDFPageCount } from '../../services/pdfDocument';
+import { downloadBlob } from '../../services/pdfShared';
 import { FileText, X, ArrowDown, GripVertical, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,7 +16,7 @@ import { FAQ, FAQItem } from '../UI/FAQ';
 const faqItems: FAQItem[] = [
   {
     question: "Is it safe to merge PDF files here?",
-    answer: "Yes, absolutely. ZenPDF processes all your files locally in your browser. Your files never leave your device and are never uploaded to any server."
+    answer: "Yes, absolutely. PDF Chef processes all your files locally in your browser. Your files never leave your device and are never uploaded to any server."
   },
   {
     question: "Can I merge PDF files offline?",
@@ -27,19 +28,17 @@ const faqItems: FAQItem[] = [
   },
   {
     question: "Is this tool free?",
-    answer: "Yes, ZenPDF is completely free to use. There are no hidden costs, watermarks, or subscription fees."
+    answer: "Yes, PDF Chef is completely free to use. There are no hidden costs, watermarks, or subscription fees."
   }
 ];
 
 export const MergePDF: React.FC = () => {
   const [files, setFiles] = useState<PDFFile[]>([]);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder<PDFFile>({
     items: files,
     onReorder: setFiles,
-    containerRef,
     keyExtractor: (f) => f.id
   });
 
@@ -67,16 +66,9 @@ export const MergePDF: React.FC = () => {
     setStatus({ isProcessing: true, progress: 10, message: 'Processing...' });
     try {
       const rawFiles = files.map(f => f.file);
-      await new Promise(r => setTimeout(r, 500));
       const mergedPdfBytes = await mergePDFs(rawFiles);
-      const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `merged-${new Date().getTime()}.pdf`;
-      a.click();
+      downloadBlob(new Blob([mergedPdfBytes], { type: 'application/pdf' }), `merged-${new Date().getTime()}.pdf`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       console.error(error);
       setStatus({ isProcessing: false, progress: 0, message: '', error: 'Merge failed' });
@@ -88,7 +80,7 @@ export const MergePDF: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto py-12 px-4 select-none">
       <SEOHead 
-        title="Merge PDF Files Online - Free & Private | ZenPDF"
+        title="Merge PDF Files Online - Free & Private | PDF Chef"
         description="Combine multiple PDFs into one document instantly. 100% local processing, no file uploads. Secure and free PDF merger."
       />
 
@@ -113,7 +105,7 @@ export const MergePDF: React.FC = () => {
               <button onClick={() => setFiles([])} className="text-rose-500 hover:text-rose-600 font-medium">Clear All</button>
             </div>
 
-            <div ref={containerRef} className="space-y-3 relative">
+            <div className="space-y-3 relative">
               {files.map((file) => (
                 <div 
                   key={file.id} 

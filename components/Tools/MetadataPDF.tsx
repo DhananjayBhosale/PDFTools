@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus, PDFMetadata } from '../../types';
-import { getPDFMetadata, setPDFMetadata } from '../../services/pdfService';
+import { getPDFMetadata, setPDFMetadata } from '../../services/pdfDocument';
+import { downloadBlob } from '../../services/pdfShared';
 import { FileSearch, Save, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
@@ -38,15 +39,7 @@ export const MetadataPDF: React.FC = () => {
     
     try {
       const pdfBytes = await setPDFMetadata(file.file, metadata);
-      
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `metadata-${file.name}`;
-      a.click();
-      
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `metadata-${file.name}`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
       console.error(error);

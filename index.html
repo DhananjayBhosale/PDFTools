@@ -1,162 +1,104 @@
-
 <!DOCTYPE html>
 <html lang="en" class="antialiased">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0ea5e9">
-    
-    <!-- Primary Meta Tags -->
-    <title>ZenPDF - 100% Local & Private PDF Tools</title>
-    <meta name="title" content="ZenPDF - 100% Local & Private PDF Tools">
-    <meta name="description" content="Merge, split, compress, and edit PDFs directly in your browser. 100% local processing, no server uploads, fully private and offline-capable.">
-    <meta name="keywords" content="pdf tools, local pdf, privacy pdf, merge pdf, split pdf, compress pdf, offline pdf editor">
-    <meta name="author" content="ZenPDF">
-    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#f6f1e8" />
 
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://zenpdf.app/">
-    <meta property="og:title" content="ZenPDF - 100% Local & Private PDF Tools">
-    <meta property="og:description" content="Every PDF tool you need, right in your browser. No server uploads. 100% Private.">
-    <meta property="og:image" content="/og-image.jpg">
+    <title>PDF Chef - Private PDF Tools</title>
+    <meta name="title" content="PDF Chef - Private PDF Tools" />
+    <meta
+      name="description"
+      content="Private PDF tools for your device. Merge, split, convert, and protect in the browser."
+    />
+    <meta
+      name="keywords"
+      content="pdf tools, private pdf, merge pdf, split pdf, compress pdf, browser pdf tools"
+    />
+    <meta name="author" content="PDF Chef" />
+    <meta name="robots" content="index, follow" />
 
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://zenpdf.app/">
-    <meta property="twitter:title" content="ZenPDF - 100% Local & Private PDF Tools">
-    <meta property="twitter:description" content="Every PDF tool you need, right in your browser. No server uploads. 100% Private.">
-    <meta property="twitter:image" content="/og-image.jpg">
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://pdfchef.dhananjaytech.app/" />
+    <meta property="og:title" content="PDF Chef - Private PDF Tools" />
+    <meta
+      property="og:description"
+      content="Private PDF tools for your device. Merge, split, convert, and protect in the browser."
+    />
+    <meta property="og:image" content="/og-image.svg" />
 
-    <!-- Favicons -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/site.webmanifest">
-    <link rel="canonical" href="https://zenpdf.app/" />
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://pdfchef.dhananjaytech.app/" />
+    <meta property="twitter:title" content="PDF Chef - Private PDF Tools" />
+    <meta
+      property="twitter:description"
+      content="Private PDF tools for your device. Merge, split, convert, and protect in the browser."
+    />
+    <meta property="twitter:image" content="/og-image.svg" />
 
-    <!-- Tailwind -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Fonts Preload -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- Global Schema -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="canonical" href="https://pdfchef.dhananjaytech.app/" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "ZenPDF",
-      "url": "https://zenpdf.app",
-      "description": "A privacy-first, fully local PDF suite. Merge, split, compress, and edit PDFs directly in your browser without any server uploads.",
-      "applicationCategory": "UtilitiesApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      }
-    }
-    </script>
-
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-            },
-            colors: {
-              background: 'var(--background)',
-              foreground: 'var(--foreground)',
-              primary: {
-                50: '#f0f9ff',
-                100: '#e0f2fe',
-                500: '#0ea5e9',
-                600: '#0284c7',
-                700: '#0369a1',
-              }
-            },
-            animation: {
-              'blob': 'blob 20s infinite',
-              'float': 'float 6s ease-in-out infinite',
-              'fade-in': 'fadeIn 0.5s ease-out forwards',
-              'slide-up': 'slideUp 0.5s ease-out forwards',
-            },
-            keyframes: {
-              blob: {
-                '0%': { transform: 'translate(0px, 0px) scale(1)' },
-                '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
-                '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
-                '100%': { transform: 'translate(0px, 0px) scale(1)' },
-              },
-              float: {
-                '0%, 100%': { transform: 'translateY(0)' },
-                '50%': { transform: 'translateY(-10px)' },
-              },
-              fadeIn: {
-                '0%': { opacity: '0' },
-                '100%': { opacity: '1' },
-              },
-              slideUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              }
-            }
-          }
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "PDF Chef",
+        "url": "https://pdfchef.dhananjaytech.app",
+        "description": "Private PDF tools for your device. Merge, split, convert, and protect in the browser.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
         }
       }
     </script>
-    <style>
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #94a3b8;
-        border-radius: 4px;
-      }
-      .dark ::-webkit-scrollbar-thumb {
-        background: #475569;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #64748b;
-      }
-      
-      body {
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-    "react-dom": "https://esm.sh/react-dom@18.3.1",
-    "pdf-lib": "https://esm.sh/pdf-lib@1.17.1",
-    "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?deps=react@18.3.1,react-dom@18.3.1",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0?deps=react@18.3.1",
-    "jszip": "https://esm.sh/jszip@3.10.1",
-    "framer-motion": "https://esm.sh/framer-motion@11.0.8?deps=react@18.3.1,react-dom@18.3.1",
-    "uuid": "https://esm.sh/uuid@9.0.1",
-    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
-    "react/": "https://esm.sh/react@18.3.1/",
-    "pdfjs-dist": "https://esm.sh/pdfjs-dist@3.11.174"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
+    <script>
+      (function () {
+        var oldHost = "pdftools.dhananjaytech.app";
+        var newHost = "pdfchef.dhananjaytech.app";
+        if (window.location.hostname !== oldHost) return;
+
+        var target =
+          window.location.protocol +
+          "//" +
+          newHost +
+          window.location.pathname +
+          window.location.search +
+          window.location.hash;
+
+        var controller = new AbortController();
+        var timeout = window.setTimeout(function () {
+          controller.abort();
+        }, 1500);
+
+        fetch("https://" + newHost + "/cdn-cgi/trace", {
+          method: "GET",
+          mode: "no-cors",
+          cache: "no-store",
+          signal: controller.signal,
+        })
+          .then(function () {
+            window.location.replace(target);
+          })
+          .catch(function () {})
+          .finally(function () {
+            window.clearTimeout(timeout);
+          });
+      })();
+    </script>
 </head>
-  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-500 overflow-x-hidden min-h-screen">
+  <body class="overflow-x-hidden min-h-screen bg-[var(--chef-bg)] text-slate-900 dark:text-slate-50">
     <div id="root" class="min-h-screen flex flex-col"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

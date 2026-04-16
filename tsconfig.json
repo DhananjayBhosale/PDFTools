@@ -21,6 +21,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "framer-motion": [
+        "./lib/framer-motion-shim.tsx"
       ]
     },
     "allowImportingTsExtensions": true,
