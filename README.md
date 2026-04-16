@@ -21,6 +21,15 @@ Private PDF tools that run in the browser. Merge, split, compress, convert, sign
 - Real editing and review flows: signing, page reorder, OCR, watermarking, page numbers, compare, and image extraction
 - Mobile fixes and interaction work already baked into the current build
 
+## What is actually special here
+
+- **Live compression preview**: the compression flow is not just a blind quality slider. Users can inspect the output visually before downloading.
+- **Selectable OCR page previews**: OCR results are shown page by page, and text can be selected from the preview instead of forcing users to trust a plain text dump.
+- **Embedded image extraction**: PDF to Image can detect real raster images inside a PDF and extract them separately, instead of only flattening full pages.
+- **Smoother interaction work**: sliders, drag flows, and mobile page operations were rebuilt to feel continuous instead of step-locked or jittery.
+- **Transparent signature handling**: signatures can be prepared without a white box background, which matters for real documents.
+- **Tool-grade previews**: signing, watermarking, page numbers, OCR, compare, and conversion flows all lean on live previews instead of static forms.
+
 ## What PDF Chef can do
 
 ### Arrange and prepare PDFs
