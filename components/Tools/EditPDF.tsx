@@ -1,8 +1,13 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
-import { loadPDFDocument } from '../../services/pdfBrowser';
+import {
+  getPdfFormFields,
+  loadPDFDocument,
+  type PdfFormFieldDefinition,
+  type PdfFormFieldValue,
+} from '../../services/pdfBrowser';
 import { savePDFWithAnnotations, type EditorElement } from '../../services/pdfDocument';
 import { downloadBlob } from '../../services/pdfShared';
 import { Save, Trash2, Type } from 'lucide-react';
@@ -18,12 +23,27 @@ const PDFPage: React.FC<{
   pageIndex: number;
   pdfDoc: any;
   elements: EditorElement[];
+  formFields: PdfFormFieldDefinition[];
+  formValues: Record<string, PdfFormFieldValue>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onUpdate: (id: string, updates: Partial<EditorElement>) => void;
   onDelete: (id: string) => void;
+  onFormValueChange: (fieldName: string, value: PdfFormFieldValue) => void;
   zoom: number;
-}> = ({ pageIndex, pdfDoc, elements, selectedId, onSelect, onUpdate, onDelete, zoom }) => {
+}> = ({
+  pageIndex,
+  pdfDoc,
+  elements,
+  formFields,
+  formValues,
+  selectedId,
+  onSelect,
+  onUpdate,
+  onDelete,
+  onFormValueChange,
+  zoom,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -89,6 +109,15 @@ const PDFPage: React.FC<{
         }}
       >
         <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none w-full h-full" />
+        {formFields.map((field) => (
+          <PDFFormFieldControl
+            key={field.id}
+            field={field}
+            value={formValues[field.fieldName]}
+            onChange={(value) => onFormValueChange(field.fieldName, value)}
+            onActivate={() => onSelect(null)}
+          />
+        ))}
         {elements.map(el => (
           <ResizableElement 
             key={el.id} element={el} containerRef={containerRef}
@@ -102,6 +131,170 @@ const PDFPage: React.FC<{
         </div>
       </div>
     </div>
+  );
+};
+
+const buildInitialFormValues = (fields: PdfFormFieldDefinition[]) => {
+  const nextValues: Record<string, PdfFormFieldValue> = {};
+
+  fields.forEach((field) => {
+    const hasExistingValue = Object.prototype.hasOwnProperty.call(nextValues, field.fieldName);
+
+    if (field.kind === 'radio') {
+      if (!hasExistingValue || (typeof field.value === 'string' && field.value)) {
+        nextValues[field.fieldName] = typeof field.value === 'string' ? field.value : '';
+      }
+      return;
+    }
+
+    if (!hasExistingValue) {
+      nextValues[field.fieldName] = field.value;
+    }
+  });
+
+  return nextValues;
+};
+
+const PDFFormFieldControl: React.FC<{
+  field: PdfFormFieldDefinition;
+  value: PdfFormFieldValue | undefined;
+  onChange: (value: PdfFormFieldValue) => void;
+  onActivate: () => void;
+}> = ({ field, value, onChange, onActivate }) => {
+  const fontSize = Math.max(11, Math.min(16, field.height * 0.55));
+  const baseStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: field.x,
+    top: field.y,
+    width: field.width,
+    height: field.height,
+  };
+
+  const sharedProps = {
+    'data-testid': 'pdf-form-field',
+    'data-field-name': field.fieldName,
+    'aria-label': field.label,
+    disabled: field.readOnly,
+    onPointerDown: (event: React.PointerEvent) => {
+      event.stopPropagation();
+      onActivate();
+    },
+    onClick: (event: React.MouseEvent) => event.stopPropagation(),
+  };
+
+  if (field.kind === 'checkbox') {
+    return (
+      <div
+        style={baseStyle}
+        className="absolute flex items-center justify-center rounded border border-blue-200 bg-white/85 shadow-sm"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onActivate();
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          {...sharedProps}
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(event) => onChange(event.target.checked)}
+          className="h-4 w-4 accent-blue-600"
+        />
+      </div>
+    );
+  }
+
+  if (field.kind === 'radio') {
+    return (
+      <label
+        style={baseStyle}
+        className="absolute flex items-center justify-center rounded border border-blue-200 bg-white/85 shadow-sm"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onActivate();
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          {...sharedProps}
+          type="radio"
+          name={field.fieldName}
+          checked={typeof value === 'string' && value === field.radioValue}
+          onChange={() => onChange(field.radioValue || '')}
+          className="h-4 w-4 accent-blue-600"
+        />
+      </label>
+    );
+  }
+
+  if (field.kind === 'select' || field.kind === 'multiselect') {
+    const currentValue = Array.isArray(value)
+      ? value
+      : typeof value === 'string' && value
+        ? [value]
+        : [];
+
+    return (
+      <select
+        {...sharedProps}
+        multiple={field.kind === 'multiselect'}
+        value={field.kind === 'multiselect' ? currentValue : currentValue[0] || ''}
+        onChange={(event) => {
+          if (field.kind === 'multiselect') {
+            const selectedValues = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+            onChange(selectedValues);
+            return;
+          }
+
+          onChange(event.currentTarget.value);
+        }}
+        style={{
+          ...baseStyle,
+          fontSize,
+          padding: '2px 6px',
+        }}
+        className="absolute rounded border border-blue-200 bg-white/92 text-slate-900 shadow-sm outline-none focus:border-blue-500"
+      >
+        {field.kind === 'select' && <option value="">Select...</option>}
+        {field.options?.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (field.kind === 'textarea') {
+    return (
+      <textarea
+        {...sharedProps}
+        value={typeof value === 'string' ? value : ''}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        style={{
+          ...baseStyle,
+          fontSize,
+          padding: '4px 6px',
+          resize: 'none',
+        }}
+        className="absolute rounded border border-blue-200 bg-white/92 text-slate-900 shadow-sm outline-none focus:border-blue-500"
+      />
+    );
+  }
+
+  return (
+    <input
+      {...sharedProps}
+      type="text"
+      value={typeof value === 'string' ? value : ''}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      style={{
+        ...baseStyle,
+        fontSize,
+        padding: '2px 6px',
+      }}
+      className="absolute rounded border border-blue-200 bg-white/92 text-slate-900 shadow-sm outline-none focus:border-blue-500"
+    />
   );
 };
 
@@ -187,17 +380,31 @@ export const EditPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [elements, setElements] = useState<EditorElement[]>([]);
+  const [formFields, setFormFields] = useState<PdfFormFieldDefinition[]>([]);
+  const [formValues, setFormValues] = useState<Record<string, PdfFormFieldValue>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
   
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(1.0);
   const selectedElement = elements.find((element) => element.id === selectedId) ?? null;
+  const fillableFieldCount = useMemo(
+    () => new Set(formFields.map((field) => field.fieldName)).size,
+    [formFields],
+  );
 
   const handleFilesSelected = async (files: File[]) => {
     if (files.length === 0) return;
-    setFile({ id: uuidv4(), file: files[0], name: files[0].name, size: files[0].size });
-    const doc = await loadPDFDocument(files[0]);
+    const nextFile = files[0];
+    setElements([]);
+    setSelectedId(null);
+    setFormFields([]);
+    setFormValues({});
+    setFile({ id: uuidv4(), file: nextFile, name: nextFile.name, size: nextFile.size });
+    const doc = await loadPDFDocument(nextFile);
+    const nextFields = await getPdfFormFields(doc);
     setPdfDoc(doc);
+    setFormFields(nextFields);
+    setFormValues(buildInitialFormValues(nextFields));
   };
 
   useEffect(() => {
@@ -218,12 +425,14 @@ export const EditPDF: React.FC = () => {
 
   const updateElement = (id: string, updates: any) => setElements(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
   const deleteElement = (id: string) => setElements(prev => prev.filter(e => e.id !== id));
+  const updateFormValue = (fieldName: string, value: PdfFormFieldValue) =>
+    setFormValues((prev) => ({ ...prev, [fieldName]: value }));
 
   const handleSave = async () => {
     if (!file) return;
     setStatus({ isProcessing: true, progress: 20, message: 'Saving annotations...' });
     try {
-      const bytes = await savePDFWithAnnotations(file.file, elements);
+      const bytes = await savePDFWithAnnotations(file.file, elements, formValues);
       downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `edited-${file.name}`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
@@ -254,6 +463,13 @@ export const EditPDF: React.FC = () => {
               />
             </div>
           )}
+          {file && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
+              {fillableFieldCount > 0
+                ? `Detected ${fillableFieldCount} fillable field${fillableFieldCount === 1 ? '' : 's'}. Click directly on the PDF to fill them, then save the edited file.`
+                : 'No fillable PDF fields detected. You can still place editable text overlays on the document.'}
+            </div>
+          )}
        </div>
 
        <AnimatePresence mode="wait">
@@ -274,8 +490,11 @@ export const EditPDF: React.FC = () => {
                       <PDFPage 
                           key={i} pageIndex={i} pdfDoc={pdfDoc}
                           elements={elements.filter(e => e.pageIndex === i)}
+                          formFields={formFields.filter((field) => field.pageIndex === i)}
+                          formValues={formValues}
                           selectedId={selectedId} onSelect={setSelectedId}
                           onUpdate={updateElement} onDelete={deleteElement}
+                          onFormValueChange={updateFormValue}
                           zoom={zoom}
                       />
                     ))}

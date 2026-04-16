@@ -1,7 +1,18 @@
-import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import {
+  PDFCheckBox,
+  PDFDocument,
+  PDFDropdown,
+  PDFOptionList,
+  PDFRadioGroup,
+  PDFTextField,
+  rgb,
+  degrees,
+  StandardFonts,
+} from 'pdf-lib';
 import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import type { PDFMetadata } from '../types';
+import type { PdfFormFieldValue } from './pdfBrowser';
 import { loadPDFDocument, loadProtectedPDFDocument, renderPageAsImage } from './pdfBrowser';
 import { readFileAsArrayBuffer, revokeObjectUrl } from './pdfShared';
 
@@ -401,7 +412,11 @@ export interface EditorElement {
   fontFamily?: string;
 }
 
-export const savePDFWithAnnotations = async (file: File, elements: EditorElement[]): Promise<Uint8Array> => {
+export const savePDFWithAnnotations = async (
+  file: File,
+  elements: EditorElement[],
+  formValues: Record<string, PdfFormFieldValue> = {},
+): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
   const pages = pdfDoc.getPages();
@@ -427,6 +442,59 @@ export const savePDFWithAnnotations = async (file: File, elements: EditorElement
       parseInt(full.slice(4, 6), 16) / 255,
     );
   };
+
+  const form = pdfDoc.getForm();
+  const fieldsByName = new Map(form.getFields().map((field) => [field.getName(), field]));
+
+  for (const [fieldName, value] of Object.entries(formValues)) {
+    const field = fieldsByName.get(fieldName);
+    if (!field) continue;
+
+    try {
+      if (field instanceof PDFTextField) {
+        field.setText(typeof value === 'string' ? value : '');
+        continue;
+      }
+
+      if (field instanceof PDFCheckBox) {
+        value ? field.check() : field.uncheck();
+        continue;
+      }
+
+      if (field instanceof PDFRadioGroup) {
+        if (typeof value === 'string' && value) field.select(value);
+        else field.clear();
+        continue;
+      }
+
+      if (field instanceof PDFDropdown) {
+        if (Array.isArray(value)) {
+          if (value.length > 0) field.select(field.isMultiselect() ? value : value[0]);
+          else field.clear();
+        } else if (typeof value === 'string' && value) {
+          field.select(value);
+        } else {
+          field.clear();
+        }
+        continue;
+      }
+
+      if (field instanceof PDFOptionList) {
+        if (Array.isArray(value)) {
+          if (value.length > 0) field.select(value);
+          else field.clear();
+        } else if (typeof value === 'string' && value) {
+          field.select(value);
+        } else {
+          field.clear();
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to set form field "${fieldName}"`, error);
+    }
+  }
+
+  form.updateFieldAppearances(fonts.Helvetica);
 
   for (const element of elements) {
     if (element.pageIndex < 0 || element.pageIndex >= pages.length) continue;
