@@ -1,0 +1,58 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">PDF Chef repository hero</title>
+  <desc id="desc">Open-source privacy-first PDF tools that process files locally in the browser with no server uploads.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset="0.42" stop-color="#ecfeff"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="236" y1="74" x2="964" y2="346" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f97316"/>
+      <stop offset="0.5" stop-color="#06b6d4"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="126" y="56" width="948" height="326" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="24"/>
+      <feGaussianBlur stdDeviation="32"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0588235 0 0 0 0 0.0901961 0 0 0 0 0.164706 0 0 0 0.18 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="420" rx="32" fill="url(#bg)"/>
+  <path d="M0 64C160 22 270 34 407 74C563 119 658 118 791 82C938 42 1053 31 1200 74V0H0V64Z" fill="#ffffff" fill-opacity="0.7"/>
+  <path d="M0 356C145 395 287 391 430 350C556 315 662 307 814 350C953 389 1066 389 1200 351V420H0V356Z" fill="#ffffff" fill-opacity="0.62"/>
+  <g filter="url(#shadow)">
+    <rect x="158" y="82" width="884" height="250" rx="28" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="158.5" y="82.5" width="883" height="249" rx="27.5" stroke="#e2e8f0"/>
+    <rect x="198" y="122" width="104" height="104" rx="24" fill="url(#accent)"/>
+    <path d="M231 148H267L283 164V260H231V148Z" fill="white" fill-opacity="0.96"/>
+    <path d="M267 148V164H283" stroke="#f97316" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M245 189H270M245 209H270M245 229H258" stroke="#0f172a" stroke-opacity="0.65" stroke-width="5" stroke-linecap="round"/>
+    <text x="334" y="158" fill="#0f172a" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="54" font-weight="800" letter-spacing="-1">PDF Chef</text>
+    <text x="336" y="198" fill="#334155" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="600">Private PDF tools. On your device.</text>
+    <text x="336" y="239" fill="#475569" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="20">Open source, browser-based, and built for sensitive documents.</text>
+    <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="16" font-weight="700">
+      <rect x="336" y="266" width="124" height="34" rx="17" fill="#dcfce7"/>
+      <text x="358" y="288" fill="#166534">No uploads</text>
+      <rect x="472" y="266" width="136" height="34" rx="17" fill="#e0f2fe"/>
+      <text x="494" y="288" fill="#075985">Browser local</text>
+      <rect x="620" y="266" width="116" height="34" rx="17" fill="#fef3c7"/>
+      <text x="644" y="288" fill="#92400e">MIT open</text>
+      <rect x="748" y="266" width="96" height="34" rx="17" fill="#ede9fe"/>
+      <text x="772" y="288" fill="#5b21b6">29 tools</text>
+    </g>
+    <g transform="translate(882 124)">
+      <rect width="104" height="142" rx="18" fill="#0f172a"/>
+      <rect x="18" y="22" width="68" height="10" rx="5" fill="#f97316"/>
+      <rect x="18" y="48" width="52" height="8" rx="4" fill="#22d3ee"/>
+      <rect x="18" y="70" width="68" height="8" rx="4" fill="#a78bfa"/>
+      <rect x="18" y="96" width="38" height="8" rx="4" fill="#86efac"/>
+      <path d="M78 106L88 116L104 96" stroke="#22c55e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>

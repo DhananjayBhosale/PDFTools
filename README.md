@@ -1,127 +1,141 @@
-# PDF Chef
-
 <p align="center">
   <a href="https://pdfchef.dhananjaytech.app/">
-    <img alt="Live app" src="https://img.shields.io/badge/Live-pdfchef.dhananjaytech.app-f97316?style=for-the-badge&logo=cloudflarepages&logoColor=white">
+    <img src=".github/assets/repo-hero.svg" alt="PDF Chef - open-source, privacy-first PDF tools that run locally in the browser" width="100%">
   </a>
-  <a href="./LICENSE">
-    <img alt="Open source" src="https://img.shields.io/badge/Open%20Source-MIT-111827?style=for-the-badge">
-  </a>
-  <img alt="No uploads" src="https://img.shields.io/badge/No%20Server%20Uploads-Local%20PDF%20Processing-059669?style=for-the-badge">
-  <img alt="Privacy first" src="https://img.shields.io/badge/Privacy%20First-Browser%20Only-2563eb?style=for-the-badge">
+</p>
+
+<h1 align="center">PDF Chef</h1>
+
+<p align="center">
+  <strong>Open-source PDF tools for private documents.</strong>
+  <br>
+  Merge, split, convert, sign, clean, OCR, compare, and secure PDFs in your browser with no server upload for PDF processing.
 </p>
 
 <p align="center">
-  <strong>Open-source PDF tools that run in your browser.</strong><br>
-  Merge, split, convert, sign, clean, OCR, compare, and secure PDFs without uploading your files to a server.
-</p>
-
-<p align="center">
-  <a href="https://pdfchef.dhananjaytech.app/">Try PDF Chef</a>
+  <a href="https://pdfchef.dhananjaytech.app/"><strong>Use the app</strong></a>
   ·
-  <a href="#tools">Tools</a>
+  <a href="#privacy-first-by-design">Privacy model</a>
   ·
-  <a href="#privacy-model">Privacy model</a>
+  <a href="#toolkit">Toolkit</a>
   ·
   <a href="#run-locally">Run locally</a>
   ·
   <a href="#contributing">Contribute</a>
 </p>
 
-![PDF Chef homepage](.github/assets/homepage-preview.png)
+<p align="center">
+  <a href="https://pdfchef.dhananjaytech.app/">
+    <img alt="Live app" src="https://img.shields.io/badge/live-pdfchef.dhananjaytech.app-f97316?style=flat-square&logo=cloudflarepages&logoColor=white">
+  </a>
+  <a href="./LICENSE">
+    <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-111827?style=flat-square">
+  </a>
+  <img alt="Open source" src="https://img.shields.io/badge/open%20source-yes-059669?style=flat-square">
+  <img alt="No server uploads" src="https://img.shields.io/badge/PDF%20uploads-none-10b981?style=flat-square">
+  <img alt="Browser processing" src="https://img.shields.io/badge/processing-browser%20local-2563eb?style=flat-square">
+  <img alt="Tools" src="https://img.shields.io/badge/tools-29-7c3aed?style=flat-square">
+  <img alt="React" src="https://img.shields.io/badge/React-18-149eca?style=flat-square&logo=react&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-6-646cff?style=flat-square&logo=vite&logoColor=white">
+</p>
 
-## Why PDF Chef exists
+---
 
-Most online PDF utilities ask users to upload sensitive documents before doing anything useful. PDF Chef takes the opposite path: the app is served as a static web app, then PDF work happens locally in the browser using client-side libraries.
+## Why PDF Chef
 
-That means resumes, contracts, invoices, scanned IDs, school forms, and business documents stay on the user's device during normal tool workflows.
+Online PDF tools often ask users to upload sensitive documents before doing anything useful. PDF Chef is built around the opposite promise: serve the app, then process the document locally in the browser.
 
-## What makes it different
+That matters for contracts, invoices, tax forms, school records, IDs, resumes, internal reports, legal drafts, and every other file users should not casually upload to a random conversion server.
 
-- **Open source**: the code is public, inspectable, and MIT licensed.
-- **No server uploads for PDF work**: files are processed in the browser, not sent to a backend conversion API.
-- **Privacy-focused by design**: the product is built around local processing, short copy, and clear user control.
-- **29 practical tools**: enough breadth for real daily PDF work without turning the UI into a cluttered toolbox.
-- **Polished product experience**: live previews, touch-friendly page controls, dark mode, and a focused dashboard.
-- **Deployable static app**: Vite build output can be hosted on Cloudflare Pages or any static host.
+<table>
+  <tr>
+    <td><strong>Private by default</strong><br>No PDF file upload for normal tool workflows.</td>
+    <td><strong>Open source</strong><br>MIT licensed and inspectable on GitHub.</td>
+    <td><strong>Browser local</strong><br>PDF.js, pdf-lib, jsPDF, JSZip, and Tesseract.js run client-side.</td>
+  </tr>
+  <tr>
+    <td><strong>No account wall</strong><br>Use the public app without signing in.</td>
+    <td><strong>Practical toolkit</strong><br>29 tools covering daily PDF work.</td>
+    <td><strong>Static deploy</strong><br>Hosted on Cloudflare Pages, portable to static hosts.</td>
+  </tr>
+</table>
 
-## Privacy model
+## Privacy-first by design
 
-PDF Chef is intentionally browser-first.
+PDF Chef is not a cloud conversion pipeline. It is a static web app with client-side PDF operations.
 
-| Area | How it works |
+| User concern | PDF Chef answer |
 | --- | --- |
-| File handling | Users select files from their device. Tool logic reads them in the browser. |
-| PDF processing | PDF.js, pdf-lib, jsPDF, Tesseract.js, and related client libraries do the work locally. |
-| Server uploads | No PDF file is uploaded to a PDF Chef server for the core tools. |
-| Accounts | No account is required to use the public app. |
-| Hosting | Cloudflare Pages serves the static site assets. |
-| Offline behavior | Once loaded, many workflows can continue locally because processing is client-side. |
+| Will my PDF be uploaded? | No PDF file is uploaded to a PDF Chef server for the core tools. |
+| Where does processing happen? | In the browser on the user's device. |
+| Do I need an account? | No account is required. |
+| Can I inspect the code? | Yes. The project is open source under MIT. |
+| What network requests exist? | The browser downloads app assets, scripts, styles, and workers from the deployed site. User PDFs are handled locally by the app. |
+| Can this be self-hosted? | Yes. Build the Vite app and serve the static output. |
 
-> Important: PDF Chef still downloads normal website assets such as JavaScript, CSS, images, and library workers from the deployed app. The privacy promise is about user PDF documents not being uploaded for processing.
+### Privacy guarantees
 
-## Tools
+- User-selected PDFs stay on the device during normal PDF tool workflows.
+- PDF operations are implemented with browser-side libraries instead of a document-processing backend.
+- No required login, workspace, or cloud storage account.
+- No third-party document conversion API.
+- Security-sensitive reports are handled privately through [SECURITY.md](./SECURITY.md).
+- New contributions are expected to preserve the no-upload model.
 
-### Arrange
+## Toolkit
 
-- Merge PDFs
-- Split PDFs
-- Reorder pages
-- Rotate pages
-- Delete pages
-- Extract selected pages
-- Add page numbers
-- Add watermarks
-- Flatten form fields
-- Crop PDF margins
-- Add headers and footers
-- Remove blank pages
+PDF Chef focuses on tools people actually need during day-to-day document work.
 
-### Convert and create
+| Arrange | Convert and create | Review and secure |
+| --- | --- | --- |
+| Merge PDFs | Compress PDFs | View PDFs |
+| Split PDFs | PDF to JPG, PNG, WebP | Edit PDF overlays |
+| Reorder pages | Image to PDF | Compare PDFs |
+| Rotate pages | Make PDF from photos | Extract text and OCR |
+| Delete pages | Extract embedded images | View and edit metadata |
+| Extract selected pages |  | Remove metadata |
+| Add page numbers |  | Remove annotations |
+| Add watermarks |  | Sanitize PDFs |
+| Flatten form fields |  | Sign PDFs |
+| Crop margins |  | Protect PDFs |
+| Add headers and footers |  | Unlock PDFs |
+| Remove blank pages |  | Repair PDFs |
 
-- Compress PDFs
-- PDF to JPG, PNG, or WebP
-- Image to PDF
-- Make PDF from photos
-- Extract embedded images
+## Product quality
 
-### Review and secure
-
-- View PDFs
-- Edit PDF overlays
-- Compare PDFs
-- Extract text and OCR scanned pages
-- View and edit metadata
-- Remove metadata
-- Remove annotations
-- Sanitize PDFs
-- Sign PDFs
-- Protect PDFs with a password
-- Unlock PDFs
-- Repair PDFs
-
-## Product highlights
-
-- **Compression with preview**: inspect the result before downloading.
-- **Image extraction**: pull embedded raster images from PDFs instead of only rendering full pages.
-- **OCR workflow**: extract existing text or run OCR on scanned pages.
-- **Signature workflow**: draw or upload signatures and place them visually.
+- **Preview-first workflows**: compression, signing, watermarking, page numbers, OCR, compare, and conversion flows show visual feedback before export.
 - **Cleanup tools**: remove metadata, annotations, blank pages, and hidden document data.
-- **Route-level SEO**: each public tool has dedicated metadata and sitemap coverage.
-- **Catalog verification**: a lightweight test prevents dashboard routes, app routes, SEO, and sitemap entries from drifting.
+- **Mobile-aware UI**: touch-friendly page operations and responsive layouts.
+- **SEO coverage**: each public tool has route-level metadata and sitemap coverage.
+- **Catalog verification**: `npm run test:catalog` prevents dashboard, route, SEO, and sitemap drift.
+
+## Architecture
+
+```text
+Browser
+  -> React + TypeScript UI
+  -> PDF.js for parsing and rendering
+  -> pdf-lib and jsPDF for document edits and exports
+  -> Tesseract.js for OCR
+  -> JSZip for packaged downloads
+  -> Local download back to the user
+
+Cloudflare Pages
+  -> Serves static HTML, CSS, JS, images, and workers
+  -> Does not receive user PDFs for core processing
+```
 
 ## Tech stack
 
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- PDF.js
-- pdf-lib
-- jsPDF
-- JSZip
-- Tesseract.js
-- Cloudflare Pages
+| Layer | Tools |
+| --- | --- |
+| App | React 18, TypeScript, Vite |
+| Styling | Tailwind CSS, lucide-react |
+| PDF runtime | PDF.js, pdf-lib, jsPDF |
+| OCR and assets | Tesseract.js, JSZip |
+| Hosting | Cloudflare Pages |
+| Verification | TypeScript, catalog verifier, production build |
 
 ## Run locally
 
@@ -167,9 +181,19 @@ public/          Static assets, robots.txt, sitemap.xml
 design-system/   Durable product and UI decisions
 ```
 
+## Roadmap
+
+- More browser-safe PDF cleanup tools
+- Stronger automated tests around PDF operations
+- Better large-file performance and progress reporting
+- Accessibility audits for every tool route
+- Optional self-hosting guide
+
 ## Contributing
 
-Contributions are welcome. The highest-value improvements are:
+Contributions are welcome when they strengthen the local-first PDF model.
+
+High-value areas:
 
 - new tools that preserve the no-upload privacy model
 - browser-side performance improvements for large PDFs
