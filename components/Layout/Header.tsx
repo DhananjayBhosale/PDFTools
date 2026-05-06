@@ -55,7 +55,7 @@ export const Header: React.FC = () => {
             <div className="hidden items-center gap-1 md:flex">
               <NavLink to="/privacy-policy">Privacy</NavLink>
               <NavLink to="/pdf-chef-privacy">Android privacy</NavLink>
-              <NavLink to="https://github.com/DhananjayBhosale/PDFTools" external>
+              <NavLink to="https://github.com/DhananjayBhosale/PDFChef" external>
                 Source
               </NavLink>
             </div>
