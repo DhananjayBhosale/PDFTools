@@ -25,6 +25,8 @@
   ·
   <a href="#run-locally">Run locally</a>
   ·
+  <a href="#download-a-release">Download</a>
+  ·
   <a href="#contributing">Contribute</a>
 </p>
 
@@ -173,6 +175,30 @@ Build output lives in `dist`:
 ```bash
 npm run build
 ```
+
+## Download a release
+
+PDF Chef releases include a ready-to-serve static ZIP. This is useful when you want to run the app locally or host it yourself without setting up the development toolchain.
+
+1. Open the [latest release](https://github.com/DhananjayBhosale/PDFChef/releases/latest).
+2. Download `pdfchef-<version>.zip`.
+3. Extract the ZIP.
+4. Serve the extracted folder with any static HTTP server.
+
+Quick start:
+
+```bash
+# Using Python
+cd pdfchef
+python -m http.server 8080
+
+# Or using Node.js
+npx serve .
+```
+
+Then open [http://localhost:8080](http://localhost:8080).
+
+Do not open `index.html` directly from the filesystem. Browser security rules can block module scripts and PDF workers when loaded from `file://`.
 
 ## Project structure
 
