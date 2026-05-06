@@ -186,6 +186,7 @@ export const Dashboard: React.FC = () => {
       <div className="mx-auto max-w-[1320px]">
         <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
           <div className="text-center">
+            <img src="/logo.svg" alt="PDF Chef" className="mx-auto mb-5 h-24 w-24 object-contain drop-shadow-sm md:h-28 md:w-28" />
             <h1 className="text-4xl font-semibold tracking-[-0.03em] text-slate-900 dark:text-white md:text-6xl">PDF Chef</h1>
             <p className="mt-4 text-xl font-medium text-slate-600 dark:text-slate-300">Private PDF tools. On your device.</p>
             <p className="mt-2 text-lg font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">MERGE. SPLIT. CONVERT. PROTECT.</p>

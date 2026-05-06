@@ -1,26 +1,28 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="100" y1="60" x2="1100" y2="570" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F172A"/>
-      <stop offset="1" stop-color="#1E293B"/>
+    <linearGradient id="bg" x1="80" y1="40" x2="1120" y2="590" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff7ed"/>
+      <stop offset="0.48" stop-color="#ecfeff"/>
+      <stop offset="1" stop-color="#eef2ff"/>
     </linearGradient>
-    <linearGradient id="accent" x1="240" y1="120" x2="980" y2="520" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#38BDF8"/>
-      <stop offset="1" stop-color="#2563EB"/>
-    </linearGradient>
+    <filter id="shadow" x="58" y="44" width="1084" height="542" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#0f172a" flood-opacity="0.18"/>
+    </filter>
   </defs>
   <rect width="1200" height="630" rx="48" fill="url(#bg)"/>
-  <circle cx="980" cy="130" r="160" fill="#0EA5E9" fill-opacity="0.12"/>
-  <circle cx="220" cy="520" r="180" fill="#38BDF8" fill-opacity="0.08"/>
-  <rect x="96" y="96" width="1008" height="438" rx="32" fill="white" fill-opacity="0.04" stroke="white" stroke-opacity="0.1"/>
-  <rect x="136" y="136" width="164" height="164" rx="28" fill="url(#accent)"/>
-  <path d="M190 176H246V224H190V176Z" fill="white" fill-opacity="0.95"/>
-  <path d="M190 236H246V260H190V236Z" fill="white" fill-opacity="0.75"/>
-  <path d="M190 272H230V288H190V272Z" fill="white" fill-opacity="0.5"/>
-  <text x="344" y="195" fill="white" font-family="Arial, sans-serif" font-size="72" font-weight="700">PDF Chef</text>
-  <text x="344" y="252" fill="#BAE6FD" font-family="Arial, sans-serif" font-size="28" font-weight="500">Private PDF tools</text>
-  <text x="344" y="312" fill="white" fill-opacity="0.82" font-family="Arial, sans-serif" font-size="24" font-weight="400">Private PDF tools for your device.</text>
-  <text x="344" y="364" fill="white" fill-opacity="0.74" font-family="Arial, sans-serif" font-size="24" font-weight="400">Merge, split, convert, and protect in the browser.</text>
-  <rect x="344" y="420" width="240" height="58" rx="18" fill="#0EA5E9"/>
-  <text x="464" y="458" fill="white" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">Private by default</text>
+  <g filter="url(#shadow)">
+    <rect x="96" y="86" width="1008" height="458" rx="36" fill="white" fill-opacity="0.94"/>
+    <rect x="96.5" y="86.5" width="1007" height="457" rx="35.5" stroke="#e2e8f0"/>
+    <image href="/logo.svg" x="148" y="150" width="220" height="220" preserveAspectRatio="xMidYMid meet"/>
+    <text x="416" y="224" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="76" font-weight="800" letter-spacing="-1.6">PDF Chef</text>
+    <text x="420" y="284" fill="#334155" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="600">Private PDF tools. On your device.</text>
+    <text x="420" y="344" fill="#475569" font-family="Inter, Arial, sans-serif" font-size="26">Open-source, browser-local PDF processing.</text>
+    <text x="420" y="386" fill="#475569" font-family="Inter, Arial, sans-serif" font-size="26">No server uploads for your documents.</text>
+    <rect x="420" y="430" width="178" height="54" rx="18" fill="#dcfce7"/>
+    <text x="509" y="465" text-anchor="middle" fill="#166534" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">No uploads</text>
+    <rect x="618" y="430" width="196" height="54" rx="18" fill="#e0f2fe"/>
+    <text x="716" y="465" text-anchor="middle" fill="#075985" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">Browser local</text>
+    <rect x="834" y="430" width="132" height="54" rx="18" fill="#fef3c7"/>
+    <text x="900" y="465" text-anchor="middle" fill="#92400e" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">MIT</text>
+  </g>
 </svg>

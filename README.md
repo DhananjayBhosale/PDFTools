@@ -1,4 +1,8 @@
 <p align="center">
+  <img src=".github/assets/logo.svg" alt="PDF Chef logo" width="120" height="120">
+</p>
+
+<p align="center">
   <a href="https://pdfchef.dhananjaytech.app/">
     <img src=".github/assets/repo-hero.svg" alt="PDF Chef - open-source, privacy-first PDF tools that run locally in the browser" width="100%">
   </a>
