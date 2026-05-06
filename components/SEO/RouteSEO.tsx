@@ -13,6 +13,10 @@ const defaultMeta: RouteMeta = {
 
 const routeMeta: Record<string, RouteMeta> = {
   '/': defaultMeta,
+  '/view': {
+    title: 'View PDF Online | PDF Chef',
+    description: 'Open and view PDFs privately in PDF Chef, then send the current file into editing, signing, compression, and other tools.',
+  },
   '/compress': {
     title: 'Compress PDF - Reduce File Size Online | PDF Chef',
     description: 'Reduce PDF size with browser-based compression and readability preview controls. Private and client-side.',
@@ -96,6 +100,34 @@ const routeMeta: Record<string, RouteMeta> = {
   '/repair': {
     title: 'Repair PDF - Re-save for Compatibility | PDF Chef',
     description: 'Rebuild and re-save PDFs to improve compatibility with strict PDF readers.',
+  },
+  '/crop': {
+    title: 'Crop PDF - Trim Page Margins | PDF Chef',
+    description: 'Crop PDF page margins privately in your browser by applying a new crop box.',
+  },
+  '/header-footer': {
+    title: 'Add Header and Footer to PDF | PDF Chef',
+    description: 'Add repeated header and footer text with page numbering tokens directly in your browser.',
+  },
+  '/remove-metadata': {
+    title: 'Remove PDF Metadata | PDF Chef',
+    description: 'Strip title, author, dates, viewer preferences, and hidden metadata from PDFs locally.',
+  },
+  '/remove-annotations': {
+    title: 'Remove PDF Annotations | PDF Chef',
+    description: 'Remove comments, annotations, markup, and page-level actions from PDF files without uploading.',
+  },
+  '/remove-blank-pages': {
+    title: 'Remove Blank Pages from PDF | PDF Chef',
+    description: 'Detect mostly empty PDF pages and export a cleaned copy with local processing.',
+  },
+  '/extract-images': {
+    title: 'Extract Images from PDF | PDF Chef',
+    description: 'Find embedded images in PDF files and download them as PNG files in a ZIP archive.',
+  },
+  '/sanitize': {
+    title: 'Sanitize PDF - Clean Hidden Data | PDF Chef',
+    description: 'Clean metadata and annotations from PDFs in one privacy-focused browser pass.',
   },
   '/privacy-policy': {
     title: 'Privacy Policy | PDF Chef',

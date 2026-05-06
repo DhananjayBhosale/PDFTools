@@ -2,6 +2,7 @@ import {
   PDFCheckBox,
   PDFDocument,
   PDFDropdown,
+  PDFName,
   PDFOptionList,
   PDFRadioGroup,
   PDFTextField,
@@ -333,6 +334,206 @@ export const repairPDF = async (file: File): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true } as any);
   return pdfDoc.save({ useObjectStreams: false });
+};
+
+export const removePDFMetadata = async (file: File): Promise<Uint8Array> => {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true } as any);
+  const cleanedDate = new Date(0);
+
+  pdfDoc.setTitle('');
+  pdfDoc.setAuthor('');
+  pdfDoc.setSubject('');
+  pdfDoc.setKeywords([]);
+  pdfDoc.setCreator('');
+  pdfDoc.setProducer('');
+  pdfDoc.setCreationDate(cleanedDate);
+  pdfDoc.setModificationDate(cleanedDate);
+
+  const catalog = pdfDoc.catalog;
+  catalog.delete(PDFName.of('Metadata'));
+  catalog.delete(PDFName.of('ViewerPreferences'));
+  catalog.delete(PDFName.of('OpenAction'));
+  catalog.delete(PDFName.of('AA'));
+
+  return pdfDoc.save();
+};
+
+export const removePDFAnnotations = async (file: File): Promise<Uint8Array> => {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true } as any);
+
+  for (const page of pdfDoc.getPages()) {
+    page.node.delete(PDFName.of('Annots'));
+    page.node.delete(PDFName.of('AA'));
+  }
+
+  return pdfDoc.save();
+};
+
+export const sanitizePDF = async (file: File): Promise<Uint8Array> => {
+  const metadataCleaned = await removePDFMetadata(file);
+  const intermediate = new File([new Blob([metadataCleaned], { type: 'application/pdf' })], file.name, {
+    type: 'application/pdf',
+  });
+  return removePDFAnnotations(intermediate);
+};
+
+export interface CropBoxOptions {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+const normalizeCropMargin = (value: number) => Math.max(0, Math.min(40, Number.isFinite(value) ? value : 0));
+
+export const cropPDFMargins = async (file: File, options: CropBoxOptions): Promise<Uint8Array> => {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(arrayBuffer);
+  const margins = {
+    top: normalizeCropMargin(options.top),
+    right: normalizeCropMargin(options.right),
+    bottom: normalizeCropMargin(options.bottom),
+    left: normalizeCropMargin(options.left),
+  };
+
+  for (const page of pdfDoc.getPages()) {
+    const { width, height } = page.getSize();
+    const left = width * (margins.left / 100);
+    const bottom = height * (margins.bottom / 100);
+    const right = width * (margins.right / 100);
+    const top = height * (margins.top / 100);
+    const cropWidth = Math.max(36, width - left - right);
+    const cropHeight = Math.max(36, height - top - bottom);
+
+    page.setCropBox(left, bottom, cropWidth, cropHeight);
+  }
+
+  return pdfDoc.save();
+};
+
+export interface HeaderFooterOptions {
+  headerText: string;
+  footerText: string;
+  fontSize: number;
+  includePageNumbers: boolean;
+}
+
+const interpolateHeaderFooterText = (value: string, pageNumber: number, totalPages: number) =>
+  value.replaceAll('{n}', String(pageNumber)).replaceAll('{total}', String(totalPages));
+
+export const addHeaderFooterToPDF = async (file: File, options: HeaderFooterOptions): Promise<Uint8Array> => {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(arrayBuffer);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pages = pdfDoc.getPages();
+  const fontSize = Math.max(8, Math.min(48, Number.isFinite(options.fontSize) ? options.fontSize : 10));
+  const totalPages = pages.length;
+
+  pages.forEach((page, index) => {
+    const pageNumber = index + 1;
+    const { width, height } = page.getSize();
+    const header = interpolateHeaderFooterText(options.headerText.trim(), pageNumber, totalPages);
+    const footerBase = options.footerText.trim();
+    const footer = interpolateHeaderFooterText(
+      options.includePageNumbers && !footerBase ? 'Page {n} of {total}' : footerBase,
+      pageNumber,
+      totalPages,
+    );
+
+    if (header) {
+      const headerWidth = font.widthOfTextAtSize(header, fontSize);
+      page.drawText(header, {
+        x: Math.max(24, (width - headerWidth) / 2),
+        y: height - fontSize - 18,
+        size: fontSize,
+        font,
+        color: rgb(0.25, 0.25, 0.25),
+      });
+    }
+
+    if (footer) {
+      const footerWidth = font.widthOfTextAtSize(footer, fontSize);
+      page.drawText(footer, {
+        x: Math.max(24, (width - footerWidth) / 2),
+        y: 18,
+        size: fontSize,
+        font,
+        color: rgb(0.25, 0.25, 0.25),
+      });
+    }
+  });
+
+  return pdfDoc.save();
+};
+
+const isPageBlank = async (pdfDoc: any, pageIndex: number, threshold: number) => {
+  const page = await pdfDoc.getPage(pageIndex + 1);
+  const viewport = page.getViewport({ scale: 0.18 });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.floor(viewport.width));
+  canvas.height = Math.max(1, Math.floor(viewport.height));
+
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    throw new Error('Canvas context failed');
+  }
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: context, viewport }).promise;
+
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  let nonWhite = 0;
+  const maxDelta = 28;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const alpha = pixels[index + 3];
+    if (alpha < 20) continue;
+    const delta = 255 - Math.min(pixels[index], pixels[index + 1], pixels[index + 2]);
+    if (delta > maxDelta) {
+      nonWhite += 1;
+    }
+  }
+
+  return nonWhite / Math.max(1, pixels.length / 4) <= threshold;
+};
+
+export const removeBlankPagesFromPDF = async (
+  file: File,
+  options?: { threshold?: number; onProgress?: (current: number, total: number) => void },
+): Promise<{ bytes: Uint8Array; removedPages: number[] }> => {
+  const sourceBuffer = await readFileAsArrayBuffer(file);
+  const sourcePdf = await PDFDocument.load(sourceBuffer);
+  const renderedPdf = await loadPDFDocument(file);
+  const totalPages = sourcePdf.getPageCount();
+  const threshold = Math.max(0.0001, Math.min(0.02, options?.threshold ?? 0.002));
+  const keptIndices: number[] = [];
+  const removedPages: number[] = [];
+
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+    options?.onProgress?.(pageIndex + 1, totalPages);
+    const blank = await isPageBlank(renderedPdf, pageIndex, threshold);
+    if (blank) {
+      removedPages.push(pageIndex + 1);
+    } else {
+      keptIndices.push(pageIndex);
+    }
+  }
+
+  if (keptIndices.length === 0) {
+    throw new Error('All pages look blank. No output was created.');
+  }
+
+  const outputPdf = await PDFDocument.create();
+  const copiedPages = await outputPdf.copyPages(sourcePdf, keptIndices);
+  copiedPages.forEach((page) => outputPdf.addPage(page));
+
+  return {
+    bytes: await outputPdf.save(),
+    removedPages,
+  };
 };
 
 export const unlockPDF = async (file: File, password: string): Promise<Uint8Array> => {

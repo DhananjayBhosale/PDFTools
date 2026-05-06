@@ -241,7 +241,7 @@ const PDFFormFieldControl: React.FC<{
         value={field.kind === 'multiselect' ? currentValue : currentValue[0] || ''}
         onChange={(event) => {
           if (field.kind === 'multiselect') {
-            const selectedValues = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+            const selectedValues = Array.from<HTMLOptionElement>(event.currentTarget.selectedOptions).map((option) => option.value);
             onChange(selectedValues);
             return;
           }

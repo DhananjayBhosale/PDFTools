@@ -6,8 +6,10 @@ import { Header } from './components/Layout/Header';
 import { Background } from './components/UI/Background';
 import { Dashboard } from './components/Tools/Dashboard';
 import { RouteSEO } from './components/SEO/RouteSEO';
+import { OpenedPdfProvider } from './hooks/useOpenedPdf';
 
 const MergePDF = React.lazy(() => import('./components/Tools/MergePDF').then((module) => ({ default: module.MergePDF })));
+const ViewPDF = React.lazy(() => import('./components/Tools/ViewPDF').then((module) => ({ default: module.ViewPDF })));
 const ImageToPDF = React.lazy(() => import('./components/Tools/ImageToPDF').then((module) => ({ default: module.ImageToPDF })));
 const SplitPDF = React.lazy(() => import('./components/Tools/SplitPDF').then((module) => ({ default: module.SplitPDF })));
 const RotatePDF = React.lazy(() => import('./components/Tools/RotatePDF').then((module) => ({ default: module.RotatePDF })));
@@ -28,6 +30,13 @@ const WatermarkPDF = React.lazy(() => import('./components/Tools/WatermarkPDF').
 const PageNumbersPDF = React.lazy(() => import('./components/Tools/PageNumbersPDF').then((module) => ({ default: module.PageNumbersPDF })));
 const RepairPDF = React.lazy(() => import('./components/Tools/RepairPDF').then((module) => ({ default: module.RepairPDF })));
 const MakePDF = React.lazy(() => import('./components/Tools/MakePDF').then((module) => ({ default: module.MakePDF })));
+const CropPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.CropPDF })));
+const HeaderFooterPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.HeaderFooterPDF })));
+const RemoveMetadataPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.RemoveMetadataPDF })));
+const RemoveAnnotationsPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.RemoveAnnotationsPDF })));
+const RemoveBlankPagesPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.RemoveBlankPagesPDF })));
+const ExtractImagesPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.ExtractImagesPDF })));
+const SanitizePDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.SanitizePDF })));
 const PrivacyPolicy = React.lazy(() => import('./components/Pages/PrivacyPolicy').then((module) => ({ default: module.PrivacyPolicy })));
 const PdfChefPrivacy = React.lazy(() => import('./components/Pages/PdfChefPrivacy').then((module) => ({ default: module.PdfChefPrivacy })));
 
@@ -56,6 +65,7 @@ const AnimatedRoutes = () => {
         <Suspense fallback={<PageLoader />}>
           <Routes location={location}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/view" element={<ViewPDF />} />
             <Route path="/compress" element={<CompressPDF />} />
             <Route path="/merge" element={<MergePDF />} />
             <Route path="/split" element={<SplitPDF />} />
@@ -77,6 +87,13 @@ const AnimatedRoutes = () => {
             <Route path="/watermark" element={<WatermarkPDF />} />
             <Route path="/page-numbers" element={<PageNumbersPDF />} />
             <Route path="/repair" element={<RepairPDF />} />
+            <Route path="/crop" element={<CropPDF />} />
+            <Route path="/header-footer" element={<HeaderFooterPDF />} />
+            <Route path="/remove-metadata" element={<RemoveMetadataPDF />} />
+            <Route path="/remove-annotations" element={<RemoveAnnotationsPDF />} />
+            <Route path="/remove-blank-pages" element={<RemoveBlankPagesPDF />} />
+            <Route path="/extract-images" element={<ExtractImagesPDF />} />
+            <Route path="/sanitize" element={<SanitizePDF />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/pdf-chef-privacy" element={<PdfChefPrivacy />} />
             <Route path="*" element={<Dashboard />} />
@@ -89,7 +106,7 @@ const AnimatedRoutes = () => {
 
 const AppContent = () => {
   const location = useLocation();
-  const isFullScreenTool = ['/image-to-pdf', '/pdf-to-jpg'].includes(location.pathname);
+  const isFullScreenTool = ['/image-to-pdf', '/pdf-to-jpg', '/view'].includes(location.pathname);
 
   return (
     <div className="min-h-screen font-sans text-slate-950 dark:text-white">
@@ -105,7 +122,9 @@ const AppContent = () => {
 
 const App: React.FC = () => (
   <Router>
-    <AppContent />
+    <OpenedPdfProvider>
+      <AppContent />
+    </OpenedPdfProvider>
   </Router>
 );
 

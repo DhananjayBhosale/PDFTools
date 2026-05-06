@@ -29,8 +29,13 @@
 - launcher: search + category tabs + tool card grid with names only, no helper subtitles
 - upload zone: oversized shared drop target with one clear heading, no explanatory body copy
 - footer strip: privacy block and utility links
+- advanced PDF tools: reuse the shared upload-to-action shell for specialized jobs; keep settings compact and numeric where possible
 
 ## Motion
 - entrance slides for header, hero, and controls
 - hover lift on tabs and cards
 - light tap feedback only
+
+## Product Coverage
+- PDFCraft-inspired parity improvements should favor privacy-safe browser tools first: crop, header/footer, remove metadata, remove annotations, remove blank pages, extract images, and sanitize.
+- Heavy tools such as PDF/A conversion, deep format conversion, OCR pipelines, and workflow automation need separate architecture decisions before adding large dependencies.

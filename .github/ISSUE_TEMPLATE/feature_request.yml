@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a privacy-preserving PDF tool or improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What PDF workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should PDF Chef do?
+    validations:
+      required: true
+  - type: dropdown
+    id: privacy
+    attributes:
+      label: Can this work without uploading PDFs to a server?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes or examples

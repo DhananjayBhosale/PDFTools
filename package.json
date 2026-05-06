@@ -2,18 +2,32 @@
   "name": "pdf-chef",
   "private": true,
   "version": "0.0.0",
+  "description": "Open-source, privacy-first PDF tools that run in the browser with no server uploads for PDF processing.",
+  "license": "MIT",
+  "homepage": "https://pdfchef.dhananjaytech.app/",
+  "keywords": [
+    "pdf",
+    "pdf-tools",
+    "privacy",
+    "browser",
+    "open-source",
+    "react",
+    "typescript"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "tsc --noEmit",
     "preview": "vite preview",
+    "test:catalog": "node scripts/verify-tool-catalog.mjs",
     "bench:fixtures": "node scripts/generate-bench-fixtures.mjs",
     "bench:browser": "node scripts/run-browser-benchmarks.mjs",
     "bench:build": "node scripts/collect-build-metrics.mjs",
     "bench:report": "node scripts/write-benchmark-report.mjs"
   },
   "dependencies": {
+    "framer-motion": "^12.38.0",
     "jspdf": "^4.2.1",
     "jszip": "3.10.1",
     "lucide-react": "0.344.0",

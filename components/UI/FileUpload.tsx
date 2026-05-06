@@ -1,6 +1,8 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { UploadCloud } from 'lucide-react';
+import { FileText, UploadCloud } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { useOpenedPdf } from '../../hooks/useOpenedPdf';
 
 interface FileUploadProps {
   onFilesSelected: (files: File[]) => void;
@@ -38,10 +40,23 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   label = 'Drop your PDF here',
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [didAutoUseOpenedPdf, setDidAutoUseOpenedPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
+  const location = useLocation();
+  const { openedPdf } = useOpenedPdf();
 
   const acceptLabel = useMemo(() => getAcceptLabel(accept), [accept]);
+  const acceptsPdf = accept.toLowerCase().includes('.pdf') || accept.toLowerCase().includes('application/pdf');
+  const routeState = location.state as { useOpenedPdf?: boolean; openedPdfId?: string } | null;
+  const canUseOpenedPdf = Boolean(openedPdf && acceptsPdf && !multiple);
+
+  useEffect(() => {
+    if (!canUseOpenedPdf || !routeState?.useOpenedPdf || didAutoUseOpenedPdf || !openedPdf) return;
+
+    setDidAutoUseOpenedPdf(true);
+    onFilesSelected([openedPdf.file]);
+  }, [canUseOpenedPdf, didAutoUseOpenedPdf, onFilesSelected, openedPdf, routeState?.useOpenedPdf]);
 
   const triggerPicker = () => {
     fileInputRef.current?.click();
@@ -151,6 +166,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           >
             Browse files
           </button>
+
+          {canUseOpenedPdf && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (openedPdf) onFilesSelected([openedPdf.file]);
+              }}
+              className="ml-2 mt-7 inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-6 py-3 text-lg font-bold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
+            >
+              <FileText size={18} />
+              Use current PDF
+            </button>
+          )}
         </div>
 
         <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">

@@ -6,12 +6,17 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://pdfchef.dhananjaytech.app/merge</loc>
-    <priority>0.9</priority>
+    <loc>https://pdfchef.dhananjaytech.app/view</loc>
+    <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
     <loc>https://pdfchef.dhananjaytech.app/compress</loc>
+    <priority>0.9</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/merge</loc>
     <priority>0.9</priority>
     <changefreq>monthly</changefreq>
   </url>
@@ -21,7 +26,7 @@
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://pdfchef.dhananjaytech.app/image-to-pdf</loc>
+    <loc>https://pdfchef.dhananjaytech.app/edit</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
@@ -31,7 +36,12 @@
     <changefreq>monthly</changefreq>
   </url>
   <url>
-    <loc>https://pdfchef.dhananjaytech.app/edit</loc>
+    <loc>https://pdfchef.dhananjaytech.app/image-to-pdf</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/make-pdf</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
   </url>
@@ -41,7 +51,112 @@
     <changefreq>monthly</changefreq>
   </url>
   <url>
+    <loc>https://pdfchef.dhananjaytech.app/delete-pages</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/reorder</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/rotate</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/protect</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/unlock</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/extract</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/metadata</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/flatten</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/compare</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/ocr</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/watermark</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/page-numbers</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/repair</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/crop</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/header-footer</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/remove-metadata</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/remove-annotations</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/remove-blank-pages</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/extract-images</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/sanitize</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
     <loc>https://pdfchef.dhananjaytech.app/privacy-policy</loc>
+    <priority>0.5</priority>
+    <changefreq>yearly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/pdf-chef-privacy</loc>
     <priority>0.5</priority>
     <changefreq>yearly</changefreq>
   </url>

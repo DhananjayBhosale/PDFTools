@@ -1,0 +1,44 @@
+name: Bug report
+description: Report something that is broken in PDF Chef.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not attach private PDFs. Use a sample file with no sensitive data.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool or route
+      placeholder: "Example: /compress"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open...
+        2. Upload a sample PDF...
+        3. Click...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Browser and device
+      placeholder: "Chrome 124, macOS; Safari, iPhone; etc."
+    validations:
+      required: true
