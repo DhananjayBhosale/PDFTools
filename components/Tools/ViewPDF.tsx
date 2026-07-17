@@ -172,7 +172,7 @@ export const ViewPDF: React.FC = () => {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <Link to="/" className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-              <img src="/logo.svg" alt="" className="h-6 w-6 rounded-md object-contain" />
+              <img src="./logo.svg" alt="" className="h-6 w-6 rounded-md object-contain" />
               <span>PDF Chef</span>
             </Link>
             <h1 className="truncate text-lg font-bold text-slate-900 dark:text-white">{openedPdf.name}</h1>

@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 const baseUrl = 'http://127.0.0.1:4174';
-const pdfPath = '/Users/dhananjaybhosale/Downloads/PDFTools-main/qa-sample.pdf';
+const pdfPath = './qa-sample.pdf';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
