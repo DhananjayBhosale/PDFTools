@@ -46,6 +46,33 @@ export const OpenedPdfProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, [navigate]);
 
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI) return;
+
+    // Handle initial file when app is launched via double-click on a PDF
+    electronAPI.getInitialFile().then((fileInfo: { name: string; data: Uint8Array<ArrayBuffer> } | null) => {
+      if (fileInfo) {
+        const file = new File([fileInfo.data], fileInfo.name, { type: 'application/pdf' });
+        setOpenedPdfFile(file);
+        navigate('/view');
+      }
+    });
+
+    // Handle subsequent files (second-instance event while app is already running)
+    const unsubscribe = electronAPI.onOpenFile((fileInfo: { name: string; data: Uint8Array<ArrayBuffer> }) => {
+      if (fileInfo) {
+        const file = new File([fileInfo.data], fileInfo.name, { type: 'application/pdf' });
+        setOpenedPdfFile(file);
+        navigate('/view');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [navigate]);
+
   const value = useMemo<OpenedPdfContextValue>(
     () => ({
       openedPdf,

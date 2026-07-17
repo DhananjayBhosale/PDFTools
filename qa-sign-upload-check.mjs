@@ -1,8 +1,8 @@
 import { chromium } from 'playwright';
 
 const baseUrl = 'http://127.0.0.1:4174';
-const pdfPath = '/Users/dhananjaybhosale/Downloads/PDFTools-main/qa-sample.pdf';
-const signPath = '/Users/dhananjaybhosale/Downloads/PDFTools-main/qa-sign.png';
+const pdfPath = './qa-sample.pdf';
+const signPath = './qa-sign.png';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const browser = await chromium.launch({ headless: true });

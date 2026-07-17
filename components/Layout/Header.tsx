@@ -37,7 +37,7 @@ export const Header: React.FC = () => {
         <div className="flex h-16 items-center justify-between">
           <motion.div whileHover={{ scale: 1.02 }} className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-3">
-              <img src="/logo.svg" alt="PDF Chef" className="h-11 w-11 rounded-xl object-contain shadow-sm" />
+              <img src="./logo.svg" alt="PDF Chef" className="h-11 w-11 rounded-xl object-contain shadow-sm" />
               <div>
                 <h1 className="text-lg font-bold text-gray-900 dark:text-white">
                   PDF Chef
