@@ -1,12 +1,15 @@
-import React, { Suspense } from 'react';
-import { HashRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
-import { Header } from './components/Layout/Header';
-import { Background } from './components/UI/Background';
+import React, { Suspense, useEffect, useMemo } from 'react';
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { AppShell } from './components/Layout/AppShell';
+import { NativeBackHandler } from './components/Layout/NativeBackHandler';
 import { Dashboard } from './components/Tools/Dashboard';
 import { RouteSEO } from './components/SEO/RouteSEO';
 import { OpenedPdfProvider } from './hooks/useOpenedPdf';
+import { AppearanceProvider } from './hooks/useAppearance';
+import { WorkspacePlatformProvider, type WorkspacePlatform } from './hooks/useWorkspaceRuntime';
+import { OutputCenter } from './components/UI/OutputCenter';
+import { Onboarding } from './components/UI/Onboarding';
+import { getWorkspaceSettings, rememberToolUse } from './services/workspace';
 
 const MergePDF = React.lazy(() => import('./components/Tools/MergePDF').then((module) => ({ default: module.MergePDF })));
 const ViewPDF = React.lazy(() => import('./components/Tools/ViewPDF').then((module) => ({ default: module.ViewPDF })));
@@ -30,6 +33,11 @@ const WatermarkPDF = React.lazy(() => import('./components/Tools/WatermarkPDF').
 const PageNumbersPDF = React.lazy(() => import('./components/Tools/PageNumbersPDF').then((module) => ({ default: module.PageNumbersPDF })));
 const RepairPDF = React.lazy(() => import('./components/Tools/RepairPDF').then((module) => ({ default: module.RepairPDF })));
 const MakePDF = React.lazy(() => import('./components/Tools/MakePDF').then((module) => ({ default: module.MakePDF })));
+const PDFToWord = React.lazy(() => import('./components/Tools/PDFToWord').then((module) => ({ default: module.PDFToWord })));
+const MakeFillable = React.lazy(() => import('./components/Tools/MakeFillable').then((module) => ({ default: module.MakeFillable })));
+const WordToPDF = React.lazy(() => import('./components/Tools/WordToPDF').then((module) => ({ default: module.WordToPDF })));
+const PowerPointToPDF = React.lazy(() => import('./components/Tools/PowerPointToPDF').then((module) => ({ default: module.PowerPointToPDF })));
+const BatchPDF = React.lazy(() => import('./components/Tools/BatchPDF').then((module) => ({ default: module.BatchPDF })));
 const CropPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.CropPDF })));
 const HeaderFooterPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.HeaderFooterPDF })));
 const RemoveMetadataPDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.RemoveMetadataPDF })));
@@ -39,29 +47,26 @@ const ExtractImagesPDF = React.lazy(() => import('./components/Tools/PdfAdvanced
 const SanitizePDF = React.lazy(() => import('./components/Tools/PdfAdvancedTools').then((module) => ({ default: module.SanitizePDF })));
 const PrivacyPolicy = React.lazy(() => import('./components/Pages/PrivacyPolicy').then((module) => ({ default: module.PrivacyPolicy })));
 const PdfChefPrivacy = React.lazy(() => import('./components/Pages/PdfChefPrivacy').then((module) => ({ default: module.PdfChefPrivacy })));
+const TermsConditions = React.lazy(() => import('./components/Pages/TermsConditions').then((module) => ({ default: module.TermsConditions })));
+const RecentPage = React.lazy(() => import('./components/Pages/RecentPage').then((module) => ({ default: module.RecentPage })));
+const SettingsPage = React.lazy(() => import('./components/Pages/SettingsPage').then((module) => ({ default: module.SettingsPage })));
 
 const PageLoader = () => (
-  <div className="flex min-h-[50vh] items-center justify-center">
-    <div className="flex flex-col items-center gap-4">
-      <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
-      <p className="text-sm font-medium text-slate-500">Loading tool workspace...</p>
+  <div role="status" aria-live="polite" aria-busy="true" className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
+    <span className="sr-only">Opening the tool</span>
+    <div aria-hidden className="space-y-3">
+      <div className="h-7 w-1/2 rounded-[var(--radius-control)] bg-[var(--surface-sunken)]" />
+      <div className="h-4 w-3/4 rounded-[var(--radius-pill)] bg-[var(--surface-sunken)]" />
+      <div className="h-40 rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)]" />
     </div>
   </div>
 );
 
-const AnimatedRoutes = () => {
+const AppRoutes = () => {
   const location = useLocation();
 
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={location.pathname}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        transition={{ duration: 0.24 }}
-        className="flex-1"
-      >
+    <div key={location.pathname} className="chef-enter flex-1">
         <Suspense fallback={<PageLoader />}>
           <Routes location={location}>
             <Route path="/" element={<Dashboard />} />
@@ -71,8 +76,12 @@ const AnimatedRoutes = () => {
             <Route path="/split" element={<SplitPDF />} />
             <Route path="/edit" element={<EditPDF />} />
             <Route path="/pdf-to-jpg" element={<PDFToImage />} />
+            <Route path="/pdf-to-word" element={<PDFToWord />} />
+            <Route path="/word-to-pdf" element={<WordToPDF />} />
+            <Route path="/powerpoint-to-pdf" element={<PowerPointToPDF />} />
             <Route path="/image-to-pdf" element={<ImageToPDF />} />
             <Route path="/make-pdf" element={<MakePDF />} />
+            <Route path="/make-fillable" element={<MakeFillable />} />
             <Route path="/sign" element={<SignPDF />} />
             <Route path="/delete-pages" element={<DeletePages />} />
             <Route path="/reorder" element={<ReorderPDF />} />
@@ -94,38 +103,110 @@ const AnimatedRoutes = () => {
             <Route path="/remove-blank-pages" element={<RemoveBlankPagesPDF />} />
             <Route path="/extract-images" element={<ExtractImagesPDF />} />
             <Route path="/sanitize" element={<SanitizePDF />} />
+            <Route path="/batch" element={<BatchPDF />} />
+            <Route path="/recent" element={<RecentPage />} />
+            {/* The pre-tab route stays live so an existing bookmark or deep link
+                still lands on the same screen. */}
+            <Route path="/history" element={<RecentPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsConditions />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/pdf-chef-privacy" element={<PdfChefPrivacy />} />
-            <Route path="*" element={<Dashboard />} />
+            <Route path="/terms-and-conditions" element={<TermsConditions />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-const AppContent = () => {
-  const location = useLocation();
-  const isFullScreenTool = ['/image-to-pdf', '/pdf-to-jpg', '/view'].includes(location.pathname);
-
-  return (
-    <div className="min-h-screen font-sans text-slate-950 dark:text-white">
-      <RouteSEO />
-      <Background />
-      {!isFullScreenTool && <Header />}
-      <main className="flex flex-1 flex-col">
-        <AnimatedRoutes />
-      </main>
     </div>
   );
 };
 
-const App: React.FC = () => (
-  <Router>
-    <OpenedPdfProvider>
-      <AppContent />
-    </OpenedPdfProvider>
-  </Router>
+const LegacyHashRedirect: React.FC = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const hashPath = window.location.hash.replace(/^#/, '');
+    if (hashPath.startsWith('/')) {
+      navigate(hashPath, { replace: true });
+    }
+  }, [navigate]);
+
+  return null;
+};
+
+const AppContent = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    rememberToolUse(location.pathname);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const applyFont = () => {
+      document.documentElement.dataset.interfaceFont = getWorkspaceSettings().interfaceFont;
+    };
+    applyFont();
+    window.addEventListener('pdfchef:settings-changed', applyFont);
+    return () => window.removeEventListener('pdfchef:settings-changed', applyFont);
+  }, []);
+
+  return (
+    <>
+      <RouteSEO />
+      <LegacyHashRedirect />
+      <NativeBackHandler />
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-[var(--radius-control)] focus:bg-[var(--surface-raised)] focus:px-4 focus:py-2 focus:font-semibold"
+      >
+        Skip to content
+      </a>
+      <AppShell>
+        <AppRoutes />
+      </AppShell>
+      <OutputCenter />
+      <Onboarding />
+    </>
+  );
+};
+
+export interface AppRootProps {
+  /**
+   * The typed platform adapter. Omit it and the interface runs on the browser
+   * fallback, which reports every capability it does not have rather than
+   * pretending to have it.
+   *
+   * Codex injects the native adapter here and nothing visual changes:
+   *
+   * ```tsx
+   * import { AppRoot } from './App';
+   * root.render(<AppRoot platform={createIosPlatform()} />);
+   * ```
+   */
+  platform?: WorkspacePlatform;
+}
+
+const AppProviders: React.FC<AppRootProps> = ({ platform }) => (
+    <AppearanceProvider>
+      <WorkspacePlatformProvider platform={platform}>
+        <OpenedPdfProvider>
+          <AppContent />
+        </OpenedPdfProvider>
+      </WorkspacePlatformProvider>
+    </AppearanceProvider>
 );
+
+/** The whole application, with the platform seam exposed. */
+export const AppRoot: React.FC<AppRootProps> = ({ platform }) => {
+  const router = useMemo(
+    () => createBrowserRouter([{ path: '*', element: <AppProviders platform={platform} /> }]),
+    [platform],
+  );
+
+  return <RouterProvider router={router} />;
+};
+
+/** Default entry point: browser fallback, no adapter injected. */
+const App: React.FC = () => <AppRoot />;
 
 export default App;

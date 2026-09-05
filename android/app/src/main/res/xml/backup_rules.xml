@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="file" path="processed/" />
+    <exclude domain="file" path="processed_index.json" />
+    <exclude domain="file" path="datastore/app_settings.preferences_pb" />
+    <exclude domain="sharedpref" path="app_settings.preferences_pb" />
+</full-backup-content>

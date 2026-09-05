@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Same theme in dark, on the same Material 3 parent the AndroidX PDF
+         resources need, with light status-bar icons instead of dark ones. -->
+    <style name="PdfReaderTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="colorAccent">@color/pdf_reader_accent</item>
+        <item name="android:windowBackground">@color/pdf_reader_surface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

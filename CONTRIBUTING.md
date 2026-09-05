@@ -31,7 +31,8 @@ npm run build
 1. Add the tool UI under `components/Tools`.
 2. Put PDF logic in `services` when it can be reused.
 3. Add the route in `App.tsx`.
-4. Add the card in `components/Tools/Dashboard.tsx`.
+4. Add the catalog entry in `components/Tools/toolCatalog.ts`, including its `availability`
+   and, if the Android app has the same tool, its `androidTool`.
 5. Add metadata in `components/SEO/RouteSEO.tsx`.
 6. Add the route to `public/sitemap.xml`.
 7. Run `npm run test:catalog`.

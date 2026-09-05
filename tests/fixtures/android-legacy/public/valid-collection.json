@@ -1,0 +1,9 @@
+{
+  "kind": "collection",
+  "ref": "a1_2",
+  "displayName": "Synthetic batch 2",
+  "toolId": "images-to-pdf",
+  "createdAt": 1700000000002,
+  "available": true,
+  "itemCount": 3
+}

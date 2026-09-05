@@ -1,9 +1,25 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.js?url';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { PDFDocument } from 'pdf-lib';
 import { canvasToBlob, getSafeBuffer, readFileAsArrayBuffer } from './pdfShared';
+import {
+  getAdaptiveConfig,
+  type AdaptiveConfig,
+  type CompressionLevel,
+} from './pdfCompressionConfig';
+import { positionedTextItemsToWordTargets } from './pdfTextLineGrouping';
+export type { PageSelectableTextLine } from './pdfTextLineGrouping';
+import type { PageSelectableTextLine } from './pdfTextLineGrouping';
 
-const pdfjs = (pdfjsLib as any).default || pdfjsLib;
+export {
+  calculateTargetSize,
+  getAdaptiveConfig,
+  getInterpolatedConfig,
+  type AdaptiveConfig,
+  type CompressionLevel,
+} from './pdfCompressionConfig';
+
+const pdfjs = pdfjsLib;
 
 if (typeof window !== 'undefined' && pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
@@ -27,31 +43,6 @@ const getFileBuffer = (file: File) => {
 
 const nextFrame = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
-const mapWithConcurrency = async <T>(
-  total: number,
-  concurrency: number,
-  mapper: (index: number) => Promise<T>,
-) => {
-  const results = new Array<T>(total);
-  let cursor = 0;
-
-  const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
-    while (true) {
-      const currentIndex = cursor;
-      cursor += 1;
-
-      if (currentIndex >= total) {
-        return;
-      }
-
-      results[currentIndex] = await mapper(currentIndex);
-    }
-  });
-
-  await Promise.all(workers);
-  return results;
-};
-
 const renderPageToBlob = async (
   page: any,
   scale: number,
@@ -72,12 +63,16 @@ const renderPageToBlob = async (
   context.fillRect(0, 0, canvas.width, canvas.height);
 
   await page.render({ canvasContext: context, viewport }).promise;
+  const width = canvas.width;
+  const height = canvas.height;
   const blob = await canvasToBlob(canvas, format, quality);
+  canvas.width = 0;
+  canvas.height = 0;
 
   return {
     blob,
-    width: canvas.width,
-    height: canvas.height,
+    width,
+    height,
   };
 };
 
@@ -87,15 +82,18 @@ export const loadPDFDocument = async (file: File) => {
 
   const next = (async () => {
     const arrayBuffer = await getFileBuffer(file);
-    const doc = await pdfjs.getDocument(getSafeBuffer(arrayBuffer)).promise;
-
-    if (typeof doc?.destroy === 'function') {
-      const originalDestroy = doc.destroy.bind(doc);
-      doc.destroy = async (...args: unknown[]) => {
+    const loadingTask = pdfjs.getDocument({ data: getSafeBuffer(arrayBuffer) });
+    const doc = await loadingTask.promise;
+    let destroyed = false;
+    Object.defineProperty(doc, 'destroy', {
+      configurable: true,
+      value: async () => {
+        if (destroyed) return;
+        destroyed = true;
         pdfDocumentCache.delete(file);
-        return originalDestroy(...args);
-      };
-    }
+        await loadingTask.destroy();
+      },
+    });
 
     return doc;
   })().catch((error) => {
@@ -108,16 +106,27 @@ export const loadPDFDocument = async (file: File) => {
 };
 
 export const loadProtectedPDFDocument = async (file: File, password: string) => {
-  const normalizedPassword = password.trim();
-  if (!normalizedPassword) {
+  const exactPassword = password;
+  if (!exactPassword) {
     throw new Error('Password is required');
   }
 
   const arrayBuffer = await getFileBuffer(file);
-  return pdfjs.getDocument({
+  const loadingTask = pdfjs.getDocument({
     data: getSafeBuffer(arrayBuffer),
-    password: normalizedPassword,
-  }).promise;
+    password: exactPassword,
+  });
+  const doc = await loadingTask.promise;
+  let destroyed = false;
+  Object.defineProperty(doc, 'destroy', {
+    configurable: true,
+    value: async () => {
+      if (destroyed) return;
+      destroyed = true;
+      await loadingTask.destroy();
+    },
+  });
+  return doc;
 };
 
 export const analyzePDF = async (file: File): Promise<{ isTextHeavy: boolean; pageCount: number }> => {
@@ -172,6 +181,25 @@ export interface ImageExportConfig {
   scale: number;
 }
 
+export const renderPdfPageToBlob = async (
+  page: any,
+  config: ImageExportConfig,
+): Promise<{ blob: Blob; width: number; height: number; sizeBytes: number }> => {
+  const { blob, width, height } = await renderPageToBlob(
+    page,
+    config.scale,
+    config.format,
+    config.quality,
+  );
+
+  return {
+    blob,
+    width,
+    height,
+    sizeBytes: blob.size,
+  };
+};
+
 export interface EmbeddedPdfImageAsset {
   id: string;
   objectUrl: string;
@@ -181,14 +209,6 @@ export interface EmbeddedPdfImageAsset {
   byteSize: number;
   pageNumbers: number[];
   source: 'xobject' | 'inline';
-}
-
-export interface PageSelectableTextLine {
-  text: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
 }
 
 export type PdfFormFieldKind = 'text' | 'textarea' | 'checkbox' | 'radio' | 'select' | 'multiselect';
@@ -318,80 +338,6 @@ export const getPdfFormFields = async (pdfDoc: any): Promise<PdfFormFieldDefinit
   return fields;
 };
 
-const groupPositionedTextItems = (
-  items: Array<{
-    text: string;
-    left: number;
-    top: number;
-    right: number;
-    bottom: number;
-    height: number;
-    centerY: number;
-  }>,
-): PageSelectableTextLine[] => {
-  const lines: Array<{
-    items: Array<{
-      text: string;
-      left: number;
-      top: number;
-      right: number;
-      bottom: number;
-      height: number;
-      centerY: number;
-    }>;
-    centerY: number;
-    height: number;
-  }> = [];
-
-  items.forEach((item) => {
-    const currentLine = lines[lines.length - 1];
-    const threshold = currentLine ? Math.max(currentLine.height, item.height) * 0.6 : 0;
-
-    if (!currentLine || Math.abs(item.centerY - currentLine.centerY) > threshold) {
-      lines.push({
-        items: [item],
-        centerY: item.centerY,
-        height: item.height,
-      });
-      return;
-    }
-
-    currentLine.items.push(item);
-    currentLine.centerY = (currentLine.centerY * (currentLine.items.length - 1) + item.centerY) / currentLine.items.length;
-    currentLine.height = Math.max(currentLine.height, item.height);
-  });
-
-  return lines
-    .map((line) => {
-      const orderedItems = [...line.items].sort((a, b) => a.left - b.left);
-      const left = Math.min(...orderedItems.map((item) => item.left));
-      const top = Math.min(...orderedItems.map((item) => item.top));
-      const right = Math.max(...orderedItems.map((item) => item.right));
-      const bottom = Math.max(...orderedItems.map((item) => item.bottom));
-
-      let text = '';
-      let lastRight = orderedItems[0]?.left ?? 0;
-
-      orderedItems.forEach((item) => {
-        const gap = item.left - lastRight;
-        if (text && gap > Math.max(item.height * 0.25, 3)) {
-          text += ' ';
-        }
-        text += item.text;
-        lastRight = Math.max(lastRight, item.right);
-      });
-
-      return {
-        text: text.replace(/\s+/g, ' ').trim(),
-        left,
-        top,
-        width: Math.max(1, right - left),
-        height: Math.max(1, bottom - top),
-      };
-    })
-    .filter((line) => line.text);
-};
-
 export const getPageSelectableTextLines = async (
   pdfDoc: any,
   pageIndex: number,
@@ -403,23 +349,70 @@ export const getPageSelectableTextLines = async (
 
   const positionedItems = textContent.items
     .map((item: any) => {
-      const text = typeof item.str === 'string' ? item.str.replace(/\s+/g, ' ').trim() : '';
-      if (!text) return null;
+      const text = typeof item.str === 'string' ? item.str : '';
+      if (!text.trim()) return null;
 
       const tx = pdfjs.Util.transform(viewport.transform, item.transform);
       const fontHeight = Math.max(1, Math.hypot(tx[2], tx[3]) || (item.height || 0) * scale || 12);
       const width = Math.max(1, (item.width || 0) * scale);
-      const left = tx[4];
-      const top = tx[5] - fontHeight;
+      const advanceLength = Math.hypot(tx[0], tx[1]);
+      const advanceX = advanceLength > 0 ? tx[0] / advanceLength * width : width;
+      const advanceY = advanceLength > 0 ? tx[1] / advanceLength * width : 0;
+      const riseLength = Math.hypot(tx[2], tx[3]);
+      const riseX = riseLength > 0 ? tx[2] / riseLength * fontHeight : 0;
+      const riseY = riseLength > 0 ? tx[3] / riseLength * fontHeight : -fontHeight;
+      const viewportCorners = [
+        [tx[4], tx[5]],
+        [tx[4] + advanceX, tx[5] + advanceY],
+        [tx[4] + riseX, tx[5] + riseY],
+        [tx[4] + advanceX + riseX, tx[5] + advanceY + riseY],
+      ];
+      const viewportXValues = viewportCorners.map(([x]) => x);
+      const viewportYValues = viewportCorners.map(([, y]) => y);
+      const left = Math.min(...viewportXValues);
+      const top = Math.min(...viewportYValues);
+      const right = Math.max(...viewportXValues);
+      const bottom = Math.max(...viewportYValues);
+
+      const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0] = item.transform || [];
+      const pdfAdvanceLength = Math.hypot(a, b);
+      const pdfAdvanceX = pdfAdvanceLength > 0 ? a / pdfAdvanceLength * (item.width || 0) : item.width || 0;
+      const pdfAdvanceY = pdfAdvanceLength > 0 ? b / pdfAdvanceLength * (item.width || 0) : 0;
+      const pdfRiseLength = Math.hypot(c, d);
+      const pdfHeight = Math.max(1, item.height || pdfRiseLength || fontHeight / scale);
+      const pdfRiseX = pdfRiseLength > 0 ? c / pdfRiseLength * pdfHeight : 0;
+      const pdfRiseY = pdfRiseLength > 0 ? d / pdfRiseLength * pdfHeight : pdfHeight;
+      const pdfCorners = [
+        [e, f],
+        [e + pdfAdvanceX, f + pdfAdvanceY],
+        [e + pdfRiseX, f + pdfRiseY],
+        [e + pdfAdvanceX + pdfRiseX, f + pdfAdvanceY + pdfRiseY],
+      ];
+      const pdfXValues = pdfCorners.map(([x]) => x);
+      const pdfYValues = pdfCorners.map(([, y]) => y);
 
       return {
         text,
         left,
         top,
-        right: left + width,
-        bottom: top + fontHeight,
-        height: fontHeight,
-        centerY: top + fontHeight / 2,
+        right,
+        bottom,
+        height: Math.max(1, bottom - top),
+        centerY: (top + bottom) / 2,
+        quad: {
+          x: tx[4],
+          y: tx[5],
+          advanceX,
+          advanceY,
+          riseX,
+          riseY,
+        },
+        sourcePdfRect: [
+          Math.min(...pdfXValues),
+          Math.min(...pdfYValues),
+          Math.max(...pdfXValues),
+          Math.max(...pdfYValues),
+        ] as [number, number, number, number],
       };
     })
     .filter(Boolean)
@@ -431,7 +424,129 @@ export const getPageSelectableTextLines = async (
       return verticalDelta;
     });
 
-  return groupPositionedTextItems(positionedItems);
+  return positionedTextItemsToWordTargets(positionedItems).map((word) => {
+    const corners = [
+      viewport.convertToPdfPoint(word.left, word.top),
+      viewport.convertToPdfPoint(word.left + word.width, word.top),
+      viewport.convertToPdfPoint(word.left, word.top + word.height),
+      viewport.convertToPdfPoint(word.left + word.width, word.top + word.height),
+    ];
+    const xValues = corners.map(([x]: [number, number]) => x);
+    const yValues = corners.map(([, y]: [number, number]) => y);
+    const sourceRunCorners = word.sourceRun && !word.sourceRun.pdfRect ? [
+      viewport.convertToPdfPoint(word.sourceRun.left, word.sourceRun.top),
+      viewport.convertToPdfPoint(word.sourceRun.left + word.sourceRun.width, word.sourceRun.top),
+      viewport.convertToPdfPoint(word.sourceRun.left, word.sourceRun.top + word.sourceRun.height),
+      viewport.convertToPdfPoint(
+        word.sourceRun.left + word.sourceRun.width,
+        word.sourceRun.top + word.sourceRun.height,
+      ),
+    ] : [];
+    const sourceRunXValues = sourceRunCorners.map(([x]: [number, number]) => x);
+    const sourceRunYValues = sourceRunCorners.map(([, y]: [number, number]) => y);
+    return {
+      ...word,
+      pdfRect: [
+        Math.min(...xValues),
+        Math.min(...yValues),
+        Math.max(...xValues),
+        Math.max(...yValues),
+      ],
+      sourceRun: word.sourceRun ? {
+        ...word.sourceRun,
+        pdfRect: word.sourceRun.pdfRect ?? [
+          Math.min(...sourceRunXValues),
+          Math.min(...sourceRunYValues),
+          Math.max(...sourceRunXValues),
+          Math.max(...sourceRunYValues),
+        ],
+      } : undefined,
+    };
+  });
+};
+
+export const pdfSpaceRectToViewportRect = async (
+  pdfDoc: any,
+  pageIndex: number,
+  pdfRect: [number, number, number, number],
+) => {
+  const page = await pdfDoc.getPage(pageIndex + 1);
+  const viewport = page.getViewport({ scale: 1 });
+  const corners = [
+    viewport.convertToViewportPoint(pdfRect[0], pdfRect[1]),
+    viewport.convertToViewportPoint(pdfRect[2], pdfRect[1]),
+    viewport.convertToViewportPoint(pdfRect[0], pdfRect[3]),
+    viewport.convertToViewportPoint(pdfRect[2], pdfRect[3]),
+  ];
+  const xValues = corners.map(([x]: [number, number]) => x);
+  const yValues = corners.map(([, y]: [number, number]) => y);
+  const left = Math.min(...xValues);
+  const top = Math.min(...yValues);
+  return {
+    left,
+    top,
+    width: Math.max(1, Math.max(...xValues) - left),
+    height: Math.max(1, Math.max(...yValues) - top),
+  };
+};
+
+const textRenderingOperations = new Set<number>([
+  pdfjs.OPS.showText,
+  pdfjs.OPS.showSpacedText,
+  pdfjs.OPS.nextLineShowText,
+  pdfjs.OPS.nextLineSetSpacingShowText,
+].filter((operation): operation is number => typeof operation === 'number'));
+
+export const getPageTextBackgroundPatch = async (
+  pdfDoc: any,
+  pageIndex: number,
+  line: PageSelectableTextLine,
+  renderScale = 2,
+): Promise<string> => {
+  const page = await pdfDoc.getPage(pageIndex + 1);
+  const scale = Math.max(1, Math.min(3, renderScale));
+  const viewport = page.getViewport({ scale });
+  const operatorList = await page.getOperatorList({ intent: 'display' });
+  const left = Math.max(0, line.left);
+  const top = Math.max(0, line.top);
+  const right = Math.min(viewport.width / scale, line.left + Math.max(1, line.width));
+  const bottom = Math.min(viewport.height / scale, line.top + Math.max(1, line.height));
+  const width = Math.max(1, Math.ceil((right - left) * scale));
+  const height = Math.max(1, Math.ceil((bottom - top) * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Unable to prepare the selected text background.');
+
+  let maximumObservedOperationIndex = -1;
+  await page.render({
+    canvasContext: context,
+    viewport,
+    background: '#ffffff',
+    transform: [1, 0, 0, 1, -left * scale, -top * scale],
+    operationsFilter: (index: number) => {
+      maximumObservedOperationIndex = Math.max(maximumObservedOperationIndex, index);
+      return !textRenderingOperations.has(operatorList.fnArray[index]);
+    },
+  }).promise;
+
+  // In the pinned PDF.js build, getOperatorList(OPLIST) is unoptimised while render(display)
+  // may run a shorter QueueOptimizer list. Every registered optimisation strictly shrinks the
+  // list, so equal lengths mean the operation indexes used by this filter are still aligned.
+  // Revisit this invariant whenever PDF.js changes its optimiser registrations.
+  if (maximumObservedOperationIndex + 1 !== operatorList.fnArray.length) {
+    canvas.width = 0;
+    canvas.height = 0;
+    throw new Error(
+      'Automatic text reconstruction is unavailable for this page because its drawing operations cannot be matched safely.',
+    );
+  }
+
+  const dataUrl = canvas.toDataURL('image/png');
+  canvas.width = 0;
+  canvas.height = 0;
+  return dataUrl;
 };
 
 export const renderPageAsImage = async (
@@ -440,15 +555,12 @@ export const renderPageAsImage = async (
   config: ImageExportConfig,
 ): Promise<{ objectUrl: string; blob: Blob; width: number; height: number; sizeBytes: number }> => {
   const page = await pdfDoc.getPage(pageIndex + 1);
-  const { blob, width, height } = await renderPageToBlob(page, config.scale, config.format, config.quality);
-  const objectUrl = URL.createObjectURL(blob);
+  const rendered = await renderPdfPageToBlob(page, config);
+  const objectUrl = URL.createObjectURL(rendered.blob);
 
   return {
+    ...rendered,
     objectUrl,
-    blob,
-    width,
-    height,
-    sizeBytes: blob.size,
   };
 };
 
@@ -702,51 +814,6 @@ export const getPageTextSignatures = async (
   return signatures;
 };
 
-export type CompressionLevel = 'extreme' | 'recommended' | 'less';
-
-export interface AdaptiveConfig {
-  scale: number;
-  quality: number;
-  projectedDPI: number;
-}
-
-export const getAdaptiveConfig = (level: CompressionLevel, isTextHeavy: boolean): AdaptiveConfig => {
-  const dpiMap = {
-    extreme: 72,
-    recommended: 144,
-    less: 200,
-  };
-
-  const targetDPI = isTextHeavy ? Math.max(dpiMap[level], 96) : dpiMap[level];
-  const scale = Math.min(1.0, targetDPI / 144);
-  const baseQuality = level === 'extreme' ? 0.5 : level === 'recommended' ? 0.75 : 0.9;
-  const quality = isTextHeavy ? Math.min(0.95, baseQuality + 0.08) : baseQuality;
-
-  return {
-    scale,
-    quality,
-    projectedDPI: targetDPI,
-  };
-};
-
-export const getInterpolatedConfig = (sliderValue: number, isTextHeavy: boolean): AdaptiveConfig => {
-  const minDPI = isTextHeavy ? 96 : 72;
-  const maxDPI = 300;
-  const dpi = minDPI + (sliderValue / 100) * (maxDPI - minDPI);
-
-  return {
-    scale: Math.min(1.0, dpi / 144),
-    quality: 0.5 + (sliderValue / 200),
-    projectedDPI: Math.round(dpi),
-  };
-};
-
-export const calculateTargetSize = (originalSize: number, level: CompressionLevel, isTextHeavy: boolean): number => {
-  const baseRatio = level === 'extreme' ? 0.3 : level === 'recommended' ? 0.6 : 0.9;
-  const ratio = isTextHeavy ? Math.min(0.95, baseRatio + 0.12) : baseRatio;
-  return Math.round(originalSize * ratio);
-};
-
 export const generatePreviewPair = async (
   file: File,
   config: AdaptiveConfig,
@@ -820,9 +887,8 @@ export const compressPDFAdaptive = async (
     };
   }
 
-  const arrayBuffer = await readFileAsArrayBuffer(file);
-
   if (!flatten) {
+    const arrayBuffer = await readFileAsArrayBuffer(file);
     onProgress(50);
     const pdfDoc = await PDFDocument.load(arrayBuffer);
     const saved = await pdfDoc.save({ useObjectStreams: false });
@@ -843,29 +909,37 @@ export const compressPDFAdaptive = async (
   const newPdf = await PDFDocument.create();
   let completedPages = 0;
 
-  const renderedPages = await mapWithConcurrency(numPages, 2, async (index) => {
-    const page = await pdf.getPage(index + 1);
-    const originalViewport = page.getViewport({ scale: 1.0 });
-    const { blob } = await renderPageToBlob(page, config.scale * 1.5, 'image/jpeg', config.quality);
-    completedPages += 1;
-    onProgress((completedPages / numPages) * 90);
+  // Render two pages at a time for throughput, then embed and release that batch before rendering
+  // more. Keeping every rendered JPEG until the end made peak memory grow with the page count.
+  const renderBatchSize = 2;
+  for (let batchStart = 0; batchStart < numPages; batchStart += renderBatchSize) {
+    const batchEnd = Math.min(numPages, batchStart + renderBatchSize);
+    const renderedPages = await Promise.all(
+      Array.from({ length: batchEnd - batchStart }, async (_, offset) => {
+        const page = await pdf.getPage(batchStart + offset + 1);
+        const originalViewport = page.getViewport({ scale: 1.0 });
+        const { blob } = await renderPageToBlob(page, config.scale * 1.5, 'image/jpeg', config.quality);
+        completedPages += 1;
+        onProgress((completedPages / numPages) * 90);
 
-    return {
-      imageBytes: await blob.arrayBuffer(),
-      width: originalViewport.width,
-      height: originalViewport.height,
-    };
-  });
+        return {
+          imageBytes: await blob.arrayBuffer(),
+          width: originalViewport.width,
+          height: originalViewport.height,
+        };
+      }),
+    );
 
-  for (const renderedPage of renderedPages) {
-    const embed = await newPdf.embedJpg(renderedPage.imageBytes);
-    const outputPage = newPdf.addPage([renderedPage.width, renderedPage.height]);
-    outputPage.drawImage(embed, {
-      x: 0,
-      y: 0,
-      width: renderedPage.width,
-      height: renderedPage.height,
-    });
+    for (const renderedPage of renderedPages) {
+      const embed = await newPdf.embedJpg(renderedPage.imageBytes);
+      const outputPage = newPdf.addPage([renderedPage.width, renderedPage.height]);
+      outputPage.drawImage(embed, {
+        x: 0,
+        y: 0,
+        width: renderedPage.width,
+        height: renderedPage.height,
+      });
+    }
   }
 
   const saved = await newPdf.save();

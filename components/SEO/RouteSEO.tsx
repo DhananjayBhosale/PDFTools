@@ -30,19 +30,35 @@ const routeMeta: Record<string, RouteMeta> = {
     description: 'Split PDFs by selected pages, all pages, or by custom page groups, fully in-browser.',
   },
   '/edit': {
-    title: 'Edit PDF - Add Text and Annotations | PDF Chef',
-    description: 'Edit PDFs with text overlays and save the updated document privately on your device.',
+    title: 'Edit PDF - Fill Form Fields and Add Text | PDF Chef',
+    description: 'Fill detected PDF form fields or place text overlays on a page, then save the updated document privately on your device.',
   },
   '/pdf-to-jpg': {
     title: 'PDF to JPG Converter - Export Pages to Images | PDF Chef',
     description: 'Convert PDF pages to JPG, PNG, or WebP images with live quality and DPI controls.',
+  },
+  '/pdf-to-word': {
+    title: 'PDF to Word - Export PDF Text to DOCX | PDF Chef',
+    description: 'Convert the searchable text layer of a PDF into a .docx file in your browser. No upload, no account.',
+  },
+  '/word-to-pdf': {
+    title: 'Word to PDF - Convert DOCX Locally | PDF Chef',
+    description: 'Convert text from .docx Word files into PDF pages entirely in your browser. No upload or account.',
+  },
+  '/powerpoint-to-pdf': {
+    title: 'PowerPoint to PDF - Convert PPTX Locally | PDF Chef',
+    description: 'Render .pptx slides to PDF at their native aspect ratio with local browser processing.',
+  },
+  '/make-fillable': {
+    title: 'Make PDF Fillable - Form Field Detection | PDF Chef',
+    description: 'Suggest, draw, review, and export real fillable PDF fields locally in your browser.',
   },
   '/image-to-pdf': {
     title: 'JPG to PDF Converter - Create PDFs from Images | PDF Chef',
     description: 'Create PDFs from images with drag-and-drop layout controls and local export.',
   },
   '/make-pdf': {
-    title: 'Make PDF from Photos - Camera or Gallery | PDF Chef',
+    title: 'Create PDF from Photos - Camera or Gallery | PDF Chef',
     description: 'Capture or import photos and build a scanned PDF directly in your browser.',
   },
   '/sign': {
@@ -129,13 +145,41 @@ const routeMeta: Record<string, RouteMeta> = {
     title: 'Sanitize PDF - Clean Hidden Data | PDF Chef',
     description: 'Clean metadata and annotations from PDFs in one privacy-focused browser pass.',
   },
+  '/batch': {
+    title: 'Batch PDF Processing - Private Bulk Tools | PDF Chef',
+    description: 'Run compression, conversion, security, metadata, page, and repair operations across several PDFs locally.',
+  },
+  '/recent': {
+    title: 'Local Output History | PDF Chef',
+    description: 'Re-download and manage PDF Chef outputs stored only in this browser.',
+  },
+  '/history': {
+    title: 'Local Output History | PDF Chef',
+    description: 'Re-download and manage PDF Chef outputs stored only in this browser.',
+  },
+  '/settings': {
+    title: 'Settings | PDF Chef',
+    description: 'Control local history, download behavior, and large-file safety preferences for PDF Chef.',
+  },
   '/privacy-policy': {
     title: 'Privacy Policy | PDF Chef',
     description: 'Read the PDF Chef privacy policy.',
   },
+  '/privacy': {
+    title: 'Privacy Policy | PDF Chef',
+    description: 'Read the PDF Chef privacy policy for the Android app and web app.',
+  },
   '/pdf-chef-privacy': {
     title: 'Android Privacy Policy | PDF Chef',
     description: 'Read the Android app privacy policy for PDF Chef.',
+  },
+  '/terms': {
+    title: 'Terms and Conditions | PDF Chef',
+    description: 'Read the PDF Chef terms and conditions.',
+  },
+  '/terms-and-conditions': {
+    title: 'Terms and Conditions | PDF Chef',
+    description: 'Read the PDF Chef terms and conditions.',
   },
 };
 
@@ -156,16 +200,21 @@ const upsertMetaTag = (name: string, content: string, property = false) => {
 export const RouteSEO: React.FC = () => {
   const location = useLocation();
 
-  const meta = useMemo(() => {
-    return routeMeta[location.pathname] ?? defaultMeta;
+  const normalizedPath = useMemo(() => {
+    if (location.pathname === '/') return '/';
+    return location.pathname.replace(/\/+$/, '');
   }, [location.pathname]);
+
+  const meta = useMemo(() => {
+    return routeMeta[normalizedPath] ?? defaultMeta;
+  }, [normalizedPath]);
 
   useEffect(() => {
     const origin = typeof window !== 'undefined'
       ? window.location.origin
       : 'https://pdfchef.dhananjaytech.app';
-    const canonicalPath = location.pathname.startsWith('/') ? location.pathname : `/${location.pathname}`;
-    const canonicalUrl = `${origin}/#${canonicalPath}`;
+    const canonicalPath = normalizedPath === '/' ? '/' : normalizedPath;
+    const canonicalUrl = `${origin}${canonicalPath}`;
 
     document.title = meta.title;
 
@@ -184,7 +233,7 @@ export const RouteSEO: React.FC = () => {
       document.head.appendChild(linkCanonical);
     }
     linkCanonical.setAttribute('href', canonicalUrl);
-  }, [location.pathname, meta]);
+  }, [normalizedPath, meta]);
 
   return null;
 };

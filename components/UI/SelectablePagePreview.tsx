@@ -39,18 +39,12 @@ export const SelectablePagePreview: React.FC<SelectablePagePreviewProps> = ({
   previewHeight,
   lines,
 }) => {
-  if (previewWidth <= 0 || previewHeight <= 0) {
-    return (
-      <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
-        Preview unavailable for page {pageNumber}.
-      </div>
-    );
-  }
-
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const hasPreviewSize = previewWidth > 0 && previewHeight > 0;
 
   useEffect(() => {
+    if (!hasPreviewSize) return;
     const element = containerRef.current;
     if (!element || typeof ResizeObserver === 'undefined') return;
 
@@ -62,7 +56,7 @@ export const SelectablePagePreview: React.FC<SelectablePagePreviewProps> = ({
     const observer = new ResizeObserver(updateSize);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [hasPreviewSize]);
 
   const scale = previewWidth > 0 && containerWidth > 0 ? Math.min(1, containerWidth / previewWidth) : 1;
   const scaledWidth = Math.max(1, previewWidth * scale);
@@ -81,15 +75,23 @@ export const SelectablePagePreview: React.FC<SelectablePagePreviewProps> = ({
     [lines],
   );
 
+  if (!hasPreviewSize) {
+    return (
+      <div className="w-full rounded-[var(--radius-field)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)] p-3 text-sm text-[var(--text-secondary)]">
+        Preview unavailable for page {pageNumber}.
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
-      <div className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+      <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">
         Drag over the page preview to copy text directly from page {pageNumber}.
       </div>
       <div
         ref={containerRef}
         data-selectable-preview="true"
-        className="w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner dark:border-slate-700 dark:bg-slate-900/70"
+        className="w-full overflow-hidden rounded-[var(--radius-field)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)]"
       >
         <div className="relative" style={{ width: scaledWidth, height: scaledHeight }}>
           <div
@@ -104,7 +106,7 @@ export const SelectablePagePreview: React.FC<SelectablePagePreviewProps> = ({
                 draggable={false}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-secondary)]">
                 Preview unavailable
               </div>
             )}
@@ -114,7 +116,7 @@ export const SelectablePagePreview: React.FC<SelectablePagePreviewProps> = ({
                 <div
                   key={line.id}
                   data-preview-line="true"
-                  className="absolute select-text whitespace-pre text-transparent caret-transparent selection:bg-blue-400/30 selection:text-transparent"
+                  className="absolute select-text whitespace-pre text-transparent caret-transparent selection:bg-ink-400/30 selection:text-transparent"
                   style={{
                     left: line.left,
                     top: line.top,

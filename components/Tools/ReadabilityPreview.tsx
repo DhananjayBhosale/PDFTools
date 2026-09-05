@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -13,18 +13,20 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+import { Portal } from '../UI/Primitives';
 import { ChefSlider } from '../UI/ChefSlider';
 import { type AdaptiveConfig, generatePreviewPair, getInterpolatedConfig } from '../../services/pdfBrowser';
 
 interface Props {
   file: File;
+  files?: Array<{ file: File; name: string }>;
   config: AdaptiveConfig;
   isTextHeavy: boolean;
   onClose: () => void;
   onConfirm: (config: AdaptiveConfig) => void;
 }
 
-export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfig, isTextHeavy, onClose, onConfirm }) => {
+export const ReadabilityPreview: React.FC<Props> = ({ file, files, config: initialConfig, isTextHeavy, onClose, onConfirm }) => {
   const [images, setImages] = useState<{ original: string; compressed: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,6 +36,7 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
 
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+  const [fileIndex, setFileIndex] = useState(0);
 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -46,6 +49,13 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
   const dragStartRef = useRef<{ clientX: number; clientY: number; panX: number; panY: number } | null>(null);
+
+  const previewFiles = useMemo(() => {
+    return files?.length ? files : [{ file, name: file.name }];
+  }, [file, files]);
+  const activeFileIndex = Math.min(fileIndex, previewFiles.length - 1);
+  const activeFile = previewFiles[activeFileIndex];
+  const isBatchPreview = previewFiles.length > 1;
 
   const clampPanToBounds = useCallback(
     (nextPan: { x: number; y: number }, targetZoom = zoom) => {
@@ -63,13 +73,13 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
   );
 
   const generate = useCallback(
-    async (cfg: AdaptiveConfig, requestedPageIndex: number) => {
+    async (sourceFile: File, cfg: AdaptiveConfig, requestedPageIndex: number) => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       setLoading(true);
 
       try {
-        const result = await generatePreviewPair(file, cfg, { pageIndex: requestedPageIndex });
+        const result = await generatePreviewPair(sourceFile, cfg, { pageIndex: requestedPageIndex });
         if (requestId !== requestIdRef.current) return;
 
         setImages({ original: result.original, compressed: result.compressed });
@@ -77,7 +87,7 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
         setPageIndex(result.pageIndex);
         setSizeEstimate({
           estimatedSize: result.metrics.estimatedTotalSize,
-          ratio: result.metrics.estimatedTotalSize / file.size,
+          ratio: result.metrics.estimatedTotalSize / sourceFile.size,
         });
       } catch (error) {
         console.error(error);
@@ -87,7 +97,7 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
         }
       }
     },
-    [file],
+    [],
   );
 
   useEffect(() => {
@@ -98,8 +108,14 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
     setCurrentConfig(initialConfig);
     setZoom(1);
     setPan({ x: 0, y: 0 });
-    void generate(initialConfig, 0);
-  }, [generate, initialConfig]);
+    void generate(activeFile.file, initialConfig, 0);
+  }, [activeFile.file, generate, initialConfig]);
+
+  useEffect(() => {
+    if (fileIndex >= previewFiles.length) {
+      setFileIndex(0);
+    }
+  }, [fileIndex, previewFiles.length]);
 
   useEffect(
     () => () => {
@@ -224,7 +240,19 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
     const clamped = Math.max(0, Math.min(pageCount - 1, nextIndex));
     setZoom(1);
     setPan({ x: 0, y: 0 });
-    void generate(currentConfig, clamped);
+    void generate(activeFile.file, currentConfig, clamped);
+  };
+
+  const requestFile = (nextIndex: number) => {
+    const clamped = Math.max(0, Math.min(previewFiles.length - 1, nextIndex));
+    if (clamped === activeFileIndex) return;
+
+    setFileIndex(clamped);
+    setPageIndex(0);
+    setPageCount(1);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setImages(null);
   };
 
   const applyQualitySlider = (value: number, immediate = false) => {
@@ -239,12 +267,12 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
     }
 
     if (immediate) {
-      void generate(nextConfig, pageIndex);
+      void generate(activeFile.file, nextConfig, pageIndex);
       return;
     }
 
     debounceRef.current = setTimeout(() => {
-      void generate(nextConfig, pageIndex);
+      void generate(activeFile.file, nextConfig, pageIndex);
     }, 180);
   };
 
@@ -252,80 +280,112 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
   const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <Portal>
+    <div className="chef-safe-x fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={onClose} />
 
       <motion.div
         initial={{ scale: 0.98, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative z-10 flex h-[95vh] w-full max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className="relative z-10 flex h-[95vh] w-full max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-paper-500 bg-slate-900 shadow-2xl"
       >
-        <div className="z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-5 py-4">
-          <div>
+        <div className="z-20 flex flex-col gap-3 border-b border-paper-600 bg-slate-900 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5 lg:py-4">
+          <div className="min-w-0">
             <h3 className="flex items-center gap-2 text-lg font-bold text-white">
-              <Eye size={20} className="text-blue-500" /> Readability Check
+              <Eye aria-hidden size={18} className="text-blue-400" /> Readability check
             </h3>
-            <p className="text-sm text-slate-400">Side-by-side preview with synced zoom and pan.</p>
+            {/* The two panes and the shared zoom control show that they are
+                synced; saying so was a line of chrome inside a modal. */}
+            <p className="mt-0.5 max-w-full truncate text-xs font-semibold text-paper-300 lg:max-w-[48vw]">
+              {isBatchPreview ? `Previewing file ${activeFileIndex + 1} of ${previewFiles.length}: ` : 'Previewing: '}
+              {activeFile.name}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => requestPage(pageIndex - 1)}
-              disabled={loading || pageIndex <= 0}
-              className="rounded-md p-2 text-slate-300 transition hover:bg-slate-800 disabled:opacity-30"
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200">
-              Page {pageIndex + 1} / {pageCount}
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+            {isBatchPreview && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => requestFile(activeFileIndex - 1)}
+                  disabled={loading || activeFileIndex <= 0}
+                  className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800 disabled:opacity-55"
+                  aria-label="Previous file"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-paper-200">
+                  File {activeFileIndex + 1} / {previewFiles.length}
+                </div>
+                <button
+                  onClick={() => requestFile(activeFileIndex + 1)}
+                  disabled={loading || activeFileIndex >= previewFiles.length - 1}
+                  className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800 disabled:opacity-55"
+                  aria-label="Next file"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => requestPage(pageIndex - 1)}
+                disabled={loading || pageIndex <= 0}
+                className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800 disabled:opacity-55"
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-paper-200">
+                Page {pageIndex + 1} / {pageCount}
+              </div>
+              <button
+                onClick={() => requestPage(pageIndex + 1)}
+                disabled={loading || pageIndex >= pageCount - 1}
+                className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800 disabled:opacity-55"
+                aria-label="Next page"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-            <button
-              onClick={() => requestPage(pageIndex + 1)}
-              disabled={loading || pageIndex >= pageCount - 1}
-              className="rounded-md p-2 text-slate-300 transition hover:bg-slate-800 disabled:opacity-30"
-              aria-label="Next page"
-            >
-              <ChevronRight size={18} />
-            </button>
 
-            <div className="mx-1 h-6 w-px bg-slate-700" />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setZoomByDelta(-0.25)}
+                disabled={zoom <= 1}
+                className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800 disabled:opacity-55"
+                aria-label="Zoom out"
+              >
+                <Minus size={16} />
+              </button>
+              <span className="w-12 text-center font-mono text-sm font-bold text-white">{Math.round(zoom * 100)}%</span>
+              <button
+                onClick={() => setZoomByDelta(0.25)}
+                disabled={zoom >= 10}
+                className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800 disabled:opacity-55"
+                aria-label="Zoom in"
+              >
+                <Plus size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  setZoomTo(1);
+                  setPan({ x: 0, y: 0 });
+                }}
+                className="rounded-md p-2 text-paper-300 transition hover:bg-slate-800"
+                aria-label="Reset zoom"
+              >
+                <RotateCcw size={16} />
+              </button>
+            </div>
 
-            <button
-              onClick={() => setZoomByDelta(-0.25)}
-              disabled={zoom <= 1}
-              className="rounded-md p-2 text-slate-300 transition hover:bg-slate-800 disabled:opacity-30"
-              aria-label="Zoom out"
-            >
-              <Minus size={16} />
-            </button>
-            <span className="w-12 text-center font-mono text-sm font-bold text-white">{Math.round(zoom * 100)}%</span>
-            <button
-              onClick={() => setZoomByDelta(0.25)}
-              disabled={zoom >= 10}
-              className="rounded-md p-2 text-slate-300 transition hover:bg-slate-800 disabled:opacity-30"
-              aria-label="Zoom in"
-            >
-              <Plus size={16} />
-            </button>
-            <button
-              onClick={() => {
-                setZoomTo(1);
-                setPan({ x: 0, y: 0 });
-              }}
-              className="rounded-md p-2 text-slate-300 transition hover:bg-slate-800"
-              aria-label="Reset zoom"
-            >
-              <RotateCcw size={16} />
-            </button>
-
-            <button onClick={onClose} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
+            <button type="button" aria-label="Close readability preview" onClick={onClose} className="ml-auto chef-target grid place-items-center rounded-lg p-2 text-paper-400 transition hover:bg-slate-800 hover:text-white lg:ml-0">
               <X size={22} />
             </button>
           </div>
         </div>
 
-        <div className="relative flex flex-1 flex-col divide-y divide-slate-800 overflow-hidden bg-black/60 md:flex-row md:divide-x md:divide-y-0">
+        <div className="relative flex flex-1 flex-col divide-y divide-paper-600 overflow-hidden bg-black/60 md:flex-row md:divide-x md:divide-y-0">
           <div
             ref={containerRef}
             className={`relative flex flex-1 items-center justify-center overflow-hidden bg-slate-100/5 ${
@@ -355,7 +415,7 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
                 />
               </>
             ) : (
-              <div className="text-sm text-slate-500">Loading preview...</div>
+              <div className="text-sm text-paper-400">Loading preview...</div>
             )}
           </div>
 
@@ -370,10 +430,10 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
             {images ? (
               <>
                 <div className="pointer-events-none absolute left-4 top-4 z-10 flex gap-2">
-                  <div className="rounded-full bg-blue-600/90 px-3 py-1 text-xs font-bold text-white shadow-lg">Compressed</div>
+                  <div className="rounded-full bg-ink-600 px-3 py-1 text-xs font-bold text-white">Compressed</div>
                   <div
                     className={`rounded-full border border-white/10 px-3 py-1 text-xs font-bold text-white shadow-lg ${
-                      dpi < 100 ? 'bg-rose-500/85' : 'bg-black/65'
+                      dpi < 100 ? 'bg-danger-600' : 'bg-black/65'
                     }`}
                   >
                     {dpi} DPI
@@ -401,24 +461,24 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
                 />
               </>
             ) : (
-              <div className="text-sm text-slate-500">Loading preview...</div>
+              <div className="text-sm text-paper-400">Loading preview...</div>
             )}
           </div>
         </div>
 
-        <div className="z-20 flex flex-col gap-5 border-t border-slate-800 bg-slate-900 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="z-20 flex flex-col gap-3 border-t border-paper-600 bg-slate-900 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="w-full lg:w-[52%]">
             <div className="mb-2 flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-300">
-                <Settings2 size={16} /> Compression quality
+              <label className="flex items-center gap-2 text-sm font-bold text-paper-300">
+                <Settings2 aria-hidden size={18} /> Compression quality
               </label>
-              <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs text-slate-400">
+              <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs text-paper-300">
                 Scale {currentConfig.scale.toFixed(2)}x • Q {Math.round(currentConfig.quality * 100)}%
               </span>
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="text-xs font-medium text-slate-500">Low</span>
+              <span className="text-xs font-medium text-paper-400">Low</span>
               <ChefSlider
                 min={0}
                 max={100}
@@ -428,10 +488,10 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
                 ariaLabel="Compression quality"
                 className="flex-1"
               />
-              <span className="text-xs font-medium text-slate-500">High</span>
+              <span className="text-xs font-medium text-paper-400">High</span>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {[
                 { label: 'Low', value: 10 },
                 { label: 'Balanced', value: 50 },
@@ -440,10 +500,10 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
                 <button
                   key={preset.label}
                   onClick={() => applyQualitySlider(preset.value, true)}
-                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                  className={`chef-hit-y rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
                     Math.abs(sliderValue - preset.value) <= 5
-                      ? 'border-blue-500 bg-blue-500/20 text-blue-200'
-                      : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500'
+                      ? 'border-blue-400 bg-blue-500/20 text-blue-200'
+                      : 'border-paper-400 bg-slate-800 text-paper-200 hover:border-paper-300'
                   }`}
                 >
                   {preset.label}
@@ -452,12 +512,12 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
             </div>
           </div>
 
-          <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-end">
             {sizeEstimate && (
               <div className={`min-w-[150px] text-right ${loading ? 'opacity-60' : 'opacity-100'}`}>
-                <div className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-500">Estimated size</div>
+                <div className="mb-1 text-xs font-bold uppercase tracking-wider text-paper-400">Estimated size</div>
                 <div className="flex items-center justify-end gap-2 font-mono text-xl font-bold text-white">
-                  <HardDrive size={18} className="text-slate-500" />~{formatSize(sizeEstimate.estimatedSize)}
+                  <HardDrive aria-hidden size={18} className="text-paper-400" />~{formatSize(sizeEstimate.estimatedSize)}
                 </div>
                 <div
                   className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-xs font-bold ${
@@ -471,7 +531,7 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
 
             <button
               onClick={() => onConfirm(currentConfig)}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold text-white shadow-lg shadow-blue-900/20 transition sm:w-auto ${
+              className={`chef-target chef-pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] px-6 font-bold text-white transition sm:w-auto ${
                 dpi < 100 ? 'bg-rose-600 hover:bg-rose-500' : 'bg-blue-600 hover:bg-blue-500'
               }`}
             >
@@ -482,5 +542,6 @@ export const ReadabilityPreview: React.FC<Props> = ({ file, config: initialConfi
         </div>
       </motion.div>
     </div>
+    </Portal>
   );
 };

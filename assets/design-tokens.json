@@ -1,0 +1,222 @@
+{
+  "$schema": "https://design-tokens.org/draft",
+  "meta": {
+    "name": "PDF Chef",
+    "version": "2.1.0",
+    "owner": "Claude UI owner (PDF Chef iOS)",
+    "source": "docs/brand-guidelines.md",
+    "mirror": "assets/design-tokens.css",
+    "note": "Values authored in OKLCH intent, shipped as sRGB hex for iOS 15 WebKit compatibility. Keep this file and assets/design-tokens.css byte-for-byte equivalent in value. Semantic text values clear WCAG AA 4.5:1 on canvas, raised and sunken in their own theme; border.strong clears 3:1 on all three because it bounds controls, border.hairline only separates."
+  },
+  "color": {
+    "paper": {
+      "description": "Warm archival neutral. The ground the product sits on. Never #fff, never #000.",
+      "oklchHue": 82,
+      "scale": {
+        "25": "#fcfaf6",
+        "50": "#f8f5ef",
+        "100": "#f1ece3",
+        "200": "#e4ddd1",
+        "300": "#d2c9ba",
+        "400": "#9b9184",
+        "500": "#7a7267",
+        "600": "#6b6459",
+        "700": "#514b43",
+        "800": "#37332d",
+        "900": "#24211d",
+        "950": "#16140f"
+      }
+    },
+    "ink": {
+      "description": "The single accent. Android logo red. Primary actions, current selection, focus, active state. Never decoration. The ink name is retained for token compatibility.",
+      "oklchHue": 26,
+      "scale": {
+        "25": "#fff8f7",
+        "50": "#fff2f0",
+        "100": "#ffe4e1",
+        "200": "#ffc8c3",
+        "300": "#ff9b95",
+        "400": "#ff4d52",
+        "500": "#e42121",
+        "600": "#dc2020",
+        "700": "#b01e22",
+        "800": "#881a1b",
+        "900": "#631b19",
+        "950": "#38100e"
+      }
+    },
+    "success": {
+      "description": "Completed, saved, reduced. Olive rather than signal green so it reads calm on paper.",
+      "oklchHue": 145,
+      "scale": {
+        "50": "#ecf3ea",
+        "100": "#d7e7d3",
+        "200": "#b6d2b0",
+        "300": "#96be8e",
+        "400": "#6d9a63",
+        "500": "#4e7a46",
+        "600": "#3f6538",
+        "700": "#34512e",
+        "800": "#2a3f26",
+        "900": "#20301e",
+        "950": "#141d13"
+      }
+    },
+    "caution": {
+      "description": "Beta surfaces, large-document memory warnings, review-first copy. Never the only signal.",
+      "oklchHue": 75,
+      "scale": {
+        "50": "#fbf1e0",
+        "100": "#f6e3c2",
+        "200": "#eccd97",
+        "300": "#e0b368",
+        "400": "#c8933a",
+        "500": "#a9761b",
+        "600": "#8c6014",
+        "700": "#704c11",
+        "800": "#573b0f",
+        "900": "#422d0d",
+        "950": "#291c08"
+      }
+    },
+    "danger": {
+      "description": "Destructive and failed. Deletion, clear-all, processing errors.",
+      "oklchHue": 22,
+      "scale": {
+        "50": "#fbecea",
+        "100": "#f7d8d3",
+        "200": "#eeb3a9",
+        "300": "#e09285",
+        "400": "#c4634f",
+        "500": "#a6412f",
+        "600": "#8c3526",
+        "700": "#712b1f",
+        "800": "#57221a",
+        "900": "#421a14",
+        "950": "#28100c"
+      }
+    }
+  },
+  "semantic": {
+    "light": {
+      "surface.canvas": "#f8f5ef",
+      "surface.raised": "#fcfaf6",
+      "surface.sunken": "#f1ece3",
+      "surface.chrome": "rgba(252, 250, 246, 0.82)",
+      "surface.scrim": "rgba(36, 33, 29, 0.44)",
+      "border.hairline": "#b4aa9d",
+      "border.strong": "#8c8276",
+      "text.primary": "#24211d",
+      "text.body": "#4a443c",
+      "text.secondary": "#615a50",
+      "text.tertiary": "#6e675c",
+      "text.onAccent": "#fcfaf6",
+      "accent.rest": "#dc2020",
+      "accent.hover": "#b01e22",
+      "accent.quiet": "#fff2f0",
+      "accent.onQuiet": "#b01e22",
+      "accent.text": "#b01e22",
+      "status.caution.text": "#704c11",
+      "focus.ring": "#dc2020"
+    },
+    "dark": {
+      "surface.canvas": "#16140f",
+      "surface.raised": "#262320",
+      "surface.sunken": "#100e0b",
+      "surface.chrome": "rgba(38, 35, 32, 0.84)",
+      "surface.scrim": "rgba(10, 9, 7, 0.62)",
+      "border.hairline": "#5b544b",
+      "border.strong": "#7b7368",
+      "text.primary": "#f8f5ef",
+      "text.body": "#e4ddd1",
+      "text.secondary": "#c9c1b3",
+      "text.tertiary": "#ada395",
+      "text.onAccent": "#16140f",
+      "accent.rest": "#ff4d52",
+      "accent.hover": "#ff9b95",
+      "accent.quiet": "#631b19",
+      "accent.onQuiet": "#ffc8c3",
+      "accent.text": "#ff9b95",
+      "status.caution.text": "#e0b368",
+      "focus.ring": "#ff4d52"
+    }
+  },
+  "typography": {
+    "family": {
+      "ui": "\"Inter Variable\", \"Inter\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, \"Segoe UI\", sans-serif",
+      "system": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, \"Segoe UI\", Roboto, sans-serif",
+      "numeric": "\"Inter Variable\", -apple-system, system-ui, sans-serif"
+    },
+    "scale": {
+      "caption": { "size": "0.75rem", "leading": "1.3333", "tracking": "0.01em", "weight": 600 },
+      "footnote": { "size": "0.75rem", "leading": "1.3333", "tracking": "0.005em", "weight": 500 },
+      "body": { "size": "0.875rem", "leading": "1.4286", "tracking": "0em", "weight": 450 },
+      "callout": { "size": "1rem", "leading": "1.375", "tracking": "-0.002em", "weight": 500 },
+      "title3": { "size": "1.25rem", "leading": "1.3", "tracking": "-0.008em", "weight": 600 },
+      "title2": { "size": "1.5rem", "leading": "1.25", "tracking": "-0.014em", "weight": 600 },
+      "title1": { "size": "1.875rem", "leading": "1.2", "tracking": "-0.02em", "weight": 650 },
+      "display": { "size": "1.875rem", "leading": "1.2", "tracking": "-0.024em", "weight": 700 }
+    },
+    "note": "The Android app is the size authority: Meta 12/16, Body 14/20, Emphasis 16/22, Title 20/26, Heading 24/30, Display 30/36. Caption and footnote share the Meta step and differ by weight and case. Tracking is size-specific: negative as type grows, near zero at body, slightly positive at caption. Sizes are rem so the readable-text-size preference and OS text scaling move layout with the text."
+  },
+  "space": {
+    "unit": "0.25rem",
+    "scale": {
+      "1": "0.25rem",
+      "2": "0.5rem",
+      "3": "0.75rem",
+      "4": "1rem",
+      "5": "1.25rem",
+      "6": "1.5rem",
+      "8": "2rem",
+      "10": "2.5rem",
+      "12": "3rem",
+      "16": "4rem"
+    }
+  },
+  "radius": {
+    "control": "0.75rem",
+    "field": "0.875rem",
+    "row": "1rem",
+    "panel": "1.375rem",
+    "sheet": "1.75rem",
+    "pill": "999px"
+  },
+  "size": {
+    "touchTarget": "44px",
+    "tabBar": "60px",
+    "navBar": "44px",
+    "readingMeasure": "68ch"
+  },
+  "elevation": {
+    "flat": "none",
+    "raised": "0 1px 2px rgba(36, 33, 29, 0.05), 0 1px 1px rgba(36, 33, 29, 0.04)",
+    "panel": "0 2px 8px rgba(36, 33, 29, 0.06), 0 12px 28px -18px rgba(36, 33, 29, 0.28)",
+    "sheet": "0 8px 24px rgba(36, 33, 29, 0.10), 0 32px 64px -32px rgba(36, 33, 29, 0.42)"
+  },
+  "motion": {
+    "note": "Critically damped by default. Overshoot only follows a user gesture that carried momentum.",
+    "duration": {
+      "instant": "80ms",
+      "tap": "120ms",
+      "transition": "220ms",
+      "sheet": "320ms"
+    },
+    "easing": {
+      "settle": "cubic-bezier(0.22, 1, 0.36, 1)",
+      "enter": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "exit": "cubic-bezier(0.55, 0, 0.45, 1)"
+    },
+    "spring": {
+      "default": { "damping": 1.0, "response": 0.35 },
+      "gesture": { "damping": 0.82, "response": 0.32 }
+    }
+  },
+  "textScale": {
+    "note": "Readable text size preference. Multiplies the root font size; every dimension in rem follows.",
+    "small": 0.92,
+    "default": 1,
+    "large": 1.14,
+    "larger": 1.3
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PDF Chef</string>
+    <string name="title_activity_main">PDF Chef</string>
+    <string name="package_name">com.dhananjaytech.pdfchef</string>
+    <string name="custom_url_scheme">com.dhananjaytech.pdfchef</string>
+</resources>

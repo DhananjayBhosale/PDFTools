@@ -1,0 +1,7 @@
+{
+  "health": "ok",
+  "invalidValueCount": 0,
+  "values": {
+    "tool_usage_memory": "{\"runs\":{\"COMPRESS\":3},\"followUps\":{\"COMPRESS\":2}}"
+  }
+}

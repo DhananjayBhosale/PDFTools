@@ -1,0 +1,224 @@
+import type {
+  ApplicationMetadata,
+  DurableDocumentRef,
+  RecentEntry,
+  RecentRecord,
+  StoredCollection,
+  StoredDocument,
+  StoredWorkspaceItem,
+  WorkspaceSettings,
+} from '../domain/workspaceModels.ts';
+
+export interface SettingsRepository {
+  load(): Promise<WorkspaceSettings | null>;
+  save(settings: WorkspaceSettings): Promise<void>;
+  clear(): Promise<void>;
+}
+
+export interface RecentRepository {
+  list(): Promise<readonly RecentEntry[]>;
+  get(id: string): Promise<RecentEntry | null>;
+  save(entry: RecentEntry): Promise<void>;
+  delete(id: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+/** Read and clear the joined recent-document view exposed to application UI. */
+export interface WorkspaceRecordsService {
+  list(): Promise<readonly RecentRecord[]>;
+  delete(id: string): Promise<void>;
+  clearRecords(): Promise<void>;
+  clearDocuments(): Promise<void>;
+}
+
+export interface ImportedDocument {
+  document: StoredDocument;
+}
+
+export interface DocumentImportService {
+  importDocuments(options?: { acceptedMimeTypes?: readonly string[] }): Promise<readonly ImportedDocument[]>;
+  takePendingImports(): Promise<readonly ImportedDocument[]>;
+}
+
+export interface ListedStoredDocument {
+  document: StoredDocument;
+  available: boolean;
+}
+
+export interface ListedStoredCollection {
+  collection: StoredCollection;
+  available: boolean;
+}
+
+export interface ListedStoredWorkspaceItem {
+  item: StoredWorkspaceItem;
+  available: boolean;
+}
+
+export interface DocumentStorageService {
+  retain(
+    input: ReadableStream<Uint8Array>,
+    metadata: Pick<StoredDocument, 'name' | 'mimeType'>,
+  ): Promise<StoredDocument>;
+  open(ref: DurableDocumentRef): Promise<ReadableStream<Uint8Array>>;
+  list(): Promise<readonly ListedStoredDocument[]>;
+  rename(ref: DurableDocumentRef, name: string): Promise<void>;
+  delete(ref: DurableDocumentRef): Promise<void>;
+  clear(): Promise<void>;
+  exists(ref: DurableDocumentRef): Promise<boolean>;
+}
+
+export interface DocumentExportService {
+  export(ref: DurableDocumentRef, metadata: Pick<StoredDocument, 'name' | 'mimeType'>): Promise<void>;
+}
+
+export interface DocumentShareService {
+  share(ref: DurableDocumentRef, metadata: Pick<StoredDocument, 'name' | 'mimeType'>): Promise<void>;
+}
+
+export interface StorageInformation {
+  retainedBytes: number;
+  availableBytes: number | null;
+  capacityBytes: number | null;
+}
+
+export interface StorageInformationService {
+  getStorageInformation(): Promise<StorageInformation>;
+}
+
+export type HapticSignal = 'selection' | 'commit' | 'warning' | 'error';
+
+export interface HapticsService {
+  signal(signal: HapticSignal): Promise<void>;
+}
+
+export interface ApplicationMetadataService {
+  getApplicationMetadata(): Promise<ApplicationMetadata>;
+}
+
+export type DocumentScanResult = Readonly<
+  | { readonly status: 'cancelled' }
+  | { readonly status: 'completed'; readonly document: StoredDocument; readonly pageCount: number }
+>;
+
+export interface DocumentScannerService {
+  scan(): Promise<DocumentScanResult>;
+}
+
+export type PdfReaderResult = Readonly<
+  | { readonly action: 'closed' }
+  | { readonly action: 'tool'; readonly toolPath: string }
+>;
+
+export interface PdfReaderService {
+  isEligible(document: StoredDocument): boolean;
+  open(document: StoredDocument): Promise<PdfReaderResult>;
+}
+
+/** Capabilities consumed by the React workspace without importing a native SDK. */
+export interface WorkspaceCapabilities {
+  persistentRename: boolean;
+  durableDocuments: boolean;
+  separateClearActions: boolean;
+}
+
+/**
+ * Why a record cannot be renamed or reversibly deleted. A code, not a sentence:
+ * the surface owns the wording, this seam owns the fact.
+ */
+export type RecordLimitation =
+  /** Owned by an older app on the same device. Readable, never writable. */
+  | 'legacy-read-only'
+  /** Kept only for this browser session, so a delete is permanent. */
+  | 'session-only'
+  /** The record survives but its file does not. */
+  | 'file-missing';
+
+/**
+ * What a platform can actually do to one specific record.
+ *
+ * A capability flag answers for the whole build, and a store that owns some
+ * rows while only reading others cannot be described by one flag. The surface
+ * asks per record and states the limitation it gets back instead of guessing.
+ */
+export interface RecordAbilities {
+  /** A new name is written back to the durable record behind this row. */
+  readonly rename: boolean;
+  /** Deleting this record is reversible until the receipt expires. */
+  readonly reversibleDelete: boolean;
+  /** Null when nothing is withheld. */
+  readonly limitation: RecordLimitation | null;
+}
+
+/**
+ * A deletion that can still be undone.
+ *
+ * `undoRef` is an opaque platform token. It is held in memory for the window
+ * and nothing else: it is never rendered, persisted, or written to a log.
+ */
+export interface UndoReceipt {
+  readonly undoRef: string;
+  /** Epoch milliseconds after which restoring no longer works. */
+  readonly expiresAt: number;
+}
+
+/**
+ * Reversible deletion for the records a platform genuinely owns. Absent means
+ * every deletion this platform performs is permanent, which is what the
+ * surface then says.
+ */
+export interface RecordRecoveryService {
+  abilitiesFor(record: RecentRecord): RecordAbilities;
+  /** Rejects for any record `abilitiesFor` did not call reversible. */
+  deleteReversibly(record: RecentRecord): Promise<UndoReceipt>;
+  restore(receipt: UndoReceipt): Promise<void>;
+}
+
+export interface FreshResult {
+  blob: Blob;
+  name: string;
+  mimeType: string;
+}
+
+export interface OutputDeliveryRequest {
+  readonly blob: Blob;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly toolPath: string;
+  readonly keepLocalHistory: boolean;
+  readonly autoDownload: boolean;
+}
+
+export type OutputDeliveryHandler = (request: OutputDeliveryRequest) => Promise<void>;
+
+/**
+ * Platform aggregate implemented by iOS and structurally compatible with the
+ * existing AppRoot injection seam. The React-owned declaration can migrate to
+ * this contract without changing runtime behaviour.
+ */
+export interface WorkspacePlatform {
+  records: WorkspaceRecordsService;
+  capabilities: WorkspaceCapabilities;
+  documentImport?: DocumentImportService;
+  documentStorage?: DocumentStorageService;
+  documentExport?: DocumentExportService;
+  documentShare?: DocumentShareService;
+  storageInformation?: StorageInformationService;
+  haptics?: HapticsService;
+  applicationMetadata?: ApplicationMetadataService;
+  documentScanner?: DocumentScannerService;
+  pdfReader?: PdfReaderService;
+  pendingImports?: PendingImportDeliveryService;
+  recordRecovery?: RecordRecoveryService;
+  save(record: RecentRecord, name: string): Promise<void>;
+  share?: (record: RecentRecord, name: string) => Promise<void>;
+  reopen(record: RecentRecord): Promise<File>;
+  rename?: (record: RecentRecord, name: string) => Promise<void>;
+  saveFresh(result: FreshResult): Promise<void>;
+  shareFresh?: (result: FreshResult) => Promise<void>;
+}
+
+/** Listener-first pending delivery. Refs are acknowledged only after consume resolves. */
+export interface PendingImportDeliveryService {
+  start(consume: (imports: readonly ImportedDocument[]) => Promise<void> | void): Promise<() => Promise<void>>;
+}

@@ -153,59 +153,68 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ file, pageInde
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      className="chef-safe-x fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-2 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-5xl h-[90vh] flex flex-col bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-700"
+        className="relative flex h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-paper-500 bg-slate-900 shadow-2xl sm:h-[90vh]"
         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking content
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900 z-10">
-          <h3 className="text-white font-bold text-lg">
-            {pageLabel} • Page {currentPageIndex + 1}{totalPages > 0 ? ` of ${totalPages}` : ''}
-          </h3>
-          <div className="flex items-center gap-4">
+        <div className="z-10 flex flex-col gap-2 border-b border-paper-600 bg-slate-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="min-w-0 text-base font-bold text-white sm:text-lg">
+              {pageLabel} • Page {currentPageIndex + 1}{totalPages > 0 ? ` of ${totalPages}` : ''}
+            </h3>
+            <button
+              onClick={onClose}
+              className="chef-pressable chef-target -mr-1 grid shrink-0 place-items-center rounded-lg text-paper-300 hover:bg-slate-800 hover:text-white sm:hidden"
+              aria-label="Close preview"
+            >
+              <X aria-hidden size={22} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-1 sm:justify-end sm:gap-4">
             <button
               onClick={() => setCurrentPageIndex((value) => Math.max(0, value - 1))}
               disabled={currentPageIndex <= 0}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40"
+              className="chef-pressable chef-target grid place-items-center text-paper-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-55"
               aria-label="Previous page"
             >
-              <ArrowLeft size={18} />
+              <ArrowLeft aria-hidden size={18} />
             </button>
             <button
               onClick={() => setCurrentPageIndex((value) => Math.min(Math.max(0, totalPages - 1), value + 1))}
               disabled={currentPageIndex >= Math.max(0, totalPages - 1)}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40"
+              className="chef-pressable chef-target grid place-items-center text-paper-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-55"
               aria-label="Next page"
             >
-              <ArrowRight size={18} />
+              <ArrowRight aria-hidden size={18} />
             </button>
             <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} max={5} />
-            <div className="w-px h-6 bg-slate-700 mx-2" />
-            <button 
+            <div className="mx-2 hidden h-6 w-px bg-paper-600 sm:block" />
+            <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-              aria-label="Close Preview"
+              className="chef-pressable chef-target hidden place-items-center rounded-lg text-paper-300 transition-colors hover:bg-slate-800 hover:text-white sm:grid"
+              aria-label="Close preview"
             >
-              <X size={24} />
+              <X aria-hidden size={24} />
             </button>
           </div>
         </div>
 
         {/* Content Area */}
         <div
-          className={`flex-1 relative overflow-hidden flex items-center justify-center p-8 bg-black/50 ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+          className={`relative flex flex-1 items-center justify-center overflow-hidden bg-black/50 p-4 ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
           onPointerDown={handlePointerDown}
         >
           {loading ? (
-            <div className="flex flex-col items-center gap-3 text-slate-400">
+            <div className="flex flex-col items-center gap-3 text-paper-400">
               <Loader2 className="animate-spin" size={40} />
               <p>Rendering high-quality preview...</p>
             </div>
           ) : error ? (
-            <div className="text-rose-400 font-medium bg-rose-900/20 px-6 py-4 rounded-xl border border-rose-900/50">
+            <div className="text-danger-300 font-medium bg-rose-900/20 px-6 py-4 rounded-xl border border-danger-500">
               {error}
             </div>
           ) : imageUrl ? (
@@ -232,11 +241,7 @@ export const PDFPreviewModal: React.FC<PDFPreviewModalProps> = ({ file, pageInde
             </div>
           )}
         </div>
-        
-        {/* Footer Hint */}
-        <div className="px-6 py-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-500">
-          Read-only mode • Use dragging controls in the main list to reorder
-        </div>
+
       </div>
     </motion.div>,
     document.body

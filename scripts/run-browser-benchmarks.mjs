@@ -7,7 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const fixtureDir = path.join(rootDir, 'benchmarks', 'fixtures');
 const baseUrl = process.env.BENCH_BASE_URL || 'http://127.0.0.1:3001';
-const benchMode = process.env.BENCH_MODE || 'parallel';
+// Run one workload at a time by default. Parallel mode is useful as an explicit
+// stress test, but it makes every timing measure contention between unrelated tools.
+const benchMode = process.env.BENCH_MODE || 'sequential';
 
 async function readFixture(fileName, type) {
   const bytes = await fs.readFile(path.join(fixtureDir, fileName));
@@ -23,10 +25,11 @@ async function main() {
   const imageFixture = await readFixture('image-12-pages.pdf', 'application/pdf');
 
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  try {
+    const page = await browser.newPage();
+    await page.goto(baseUrl, { waitUntil: 'networkidle' });
 
-  const metrics = await page.evaluate(async ({ textFixture, imageFixture, benchMode }) => {
+    const metrics = await page.evaluate(async ({ textFixture, imageFixture, benchMode }) => {
     const module = await import('/services/pdfService.ts');
 
     const makeFile = ({ bytes, fileName, type }) =>
@@ -96,13 +99,16 @@ async function main() {
       : await Promise.all([runPreview(), runRender(), runCompression()]);
 
     return Object.fromEntries(entries);
-  }, { textFixture, imageFixture, benchMode });
+    }, { textFixture, imageFixture, benchMode });
 
-  await browser.close();
-  console.log(JSON.stringify({
-    baseUrl,
-    metrics,
-  }, null, 2));
+    console.log(JSON.stringify({
+      baseUrl,
+      benchMode,
+      metrics,
+    }, null, 2));
+  } finally {
+    await browser.close();
+  }
 }
 
 await main();

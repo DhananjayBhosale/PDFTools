@@ -1,123 +1,246 @@
 import React, { useState } from 'react';
-import { FileUpload } from '../UI/FileUpload';
-import { PDFFile, ProcessingStatus, PDFMetadata } from '../../types';
-import { getPDFMetadata, setPDFMetadata } from '../../services/pdfDocument';
-import { downloadBlob } from '../../services/pdfShared';
-import { FileSearch, Save, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Loader2, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
+import { FileUpload } from '../UI/FileUpload';
+import { Button } from '../UI/Primitives';
+import { StatusToast } from '../UI/StatusToast';
+import { ToolHeader, ToolShell } from '../UI/ToolLayout';
+import { PDFFile, PDFMetadata, ProcessingStatus } from '../../types';
+import { getPDFMetadata, setPDFMetadata } from '../../services/pdfDocument';
+import { loadPDFDocument } from '../../services/pdfBrowser';
+import { downloadBlob, isPdfFile } from '../../services/pdfShared';
+import { androidExportFileName } from '../../services/androidParity';
+import { formatBytes } from '../UI/format';
+
+type MetadataTextField = 'title' | 'author' | 'subject' | 'keywords' | 'creator' | 'producer';
+
+const METADATA_FIELDS: ReadonlyArray<{ key: MetadataTextField; label: string }> = [
+  { key: 'title', label: 'Title' },
+  { key: 'author', label: 'Author' },
+  { key: 'subject', label: 'Subject' },
+  { key: 'keywords', label: 'Keywords' },
+  { key: 'creator', label: 'Creator' },
+  { key: 'producer', label: 'Producer' },
+];
+
+const emptyStatus = (): ProcessingStatus => ({ isProcessing: false, progress: 0, message: '' });
 
 export const MetadataPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [metadata, setMetadata] = useState<PDFMetadata>({});
-  const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
+  const [sourceMetadata, setSourceMetadata] = useState<PDFMetadata>({});
+  const [clearAllPending, setClearAllPending] = useState(false);
+  const [status, setStatus] = useState<ProcessingStatus>(emptyStatus);
 
   const handleFilesSelected = async (files: File[]) => {
     if (files.length === 0) return;
-    const f = files[0];
-    if (f.type !== 'application/pdf') return;
+    const selected = files[0];
+    if (!isPdfFile(selected)) {
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Choose a PDF file.' });
+      return;
+    }
 
-    // Load metadata immediately
+    setStatus({ isProcessing: true, progress: 10, message: 'Reading metadata on this device…' });
     try {
-      const meta = await getPDFMetadata(f);
-      setMetadata(meta);
+      const probe = await loadPDFDocument(selected);
+      const pageCount = Number(probe?.numPages) || 0;
+      if (probe?.destroy) void probe.destroy();
+      if (pageCount < 1) throw new Error('No readable pages');
+
+      const loaded = await getPDFMetadata(selected);
+      setSourceMetadata(loaded);
+      setMetadata(loaded);
+      setClearAllPending(false);
       setFile({
         id: uuidv4(),
-        file: f,
-        name: f.name,
-        size: f.size
+        file: selected,
+        name: selected.name,
+        size: selected.size,
       });
-    } catch (e) {
-      console.error(e);
+      setStatus({ isProcessing: false, progress: 100, message: 'Metadata loaded. Review the six editable fields.' });
+    } catch (error) {
+      console.error(error);
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: 'Unable to read metadata from this PDF. Choose another file or try Repair PDF first.',
+      });
     }
+  };
+
+  const chooseAnotherFile = () => {
+    setFile(null);
+    setMetadata({});
+    setSourceMetadata({});
+    setClearAllPending(false);
+    setStatus(emptyStatus());
+  };
+
+  const resetToSource = () => {
+    setMetadata(sourceMetadata);
+    setClearAllPending(false);
+    setStatus({
+      isProcessing: false,
+      progress: 0,
+      message: 'Original values restored in this draft. Export to create an updated copy.',
+    });
+  };
+
+  const clearSixProperties = () => {
+    setMetadata({});
+    setClearAllPending(true);
+    setStatus({
+      isProcessing: false,
+      progress: 0,
+      message: 'Six document properties cleared in this draft. Export to create the cleared copy.',
+    });
+  };
+
+  const updateMetadataField = (field: MetadataTextField, value: string) => {
+    setClearAllPending(false);
+    setMetadata((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
     if (!file) return;
-    setStatus({ isProcessing: true, progress: 10, message: 'Saving...' });
-    
+    setStatus({ isProcessing: true, progress: 10, message: 'Creating the updated PDF on this device…' });
+
     try {
-      const pdfBytes = await setPDFMetadata(file.file, metadata);
-      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `metadata-${file.name}`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      const pdfBytes = await setPDFMetadata(file.file, metadata, { clearAll: clearAllPending });
+      downloadBlob(
+        new Blob([pdfBytes], { type: 'application/pdf' }),
+        androidExportFileName('metadata', file.name, 'pdf'),
+        'application/pdf',
+      );
+      setStatus({
+        isProcessing: false,
+        progress: 100,
+        message: clearAllPending
+          ? 'Updated PDF created with the six editable properties cleared.'
+          : 'Updated PDF created. Open the copy to review its document properties.',
+      });
     } catch (error) {
       console.error(error);
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Failed to save' });
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: 'Unable to create the updated PDF. Your original file was not changed.',
+      });
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-4">
-      <div className="mb-8">
-         <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
-         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">PDF Metadata</h1>
-         <p className="text-slate-500 dark:text-slate-400">View and edit document properties.</p>
-      </div>
+    <ToolShell width="list" centered={!file}>
+      <ToolHeader title="Metadata" />
 
       <AnimatePresence mode="wait">
         {!file ? (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-             <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to view metadata" />
-          </motion.div>
+          status.isProcessing ? (
+            <motion.div
+              key="reading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-center gap-3 rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] px-4 py-4 text-[var(--text-secondary)]"
+            >
+              <Loader2 aria-hidden className="h-5 w-5 animate-spin text-[var(--accent-text)]" />
+              <span className="font-medium">Reading metadata on this device…</span>
+            </motion.div>
+          ) : (
+            <motion.div key="upload" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Choose a PDF to inspect" />
+            </motion.div>
+          )
         ) : (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
+          <motion.div
+            key="editor"
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="grid md:grid-cols-3 gap-8"
+            className="space-y-3"
           >
-            {/* Sidebar info */}
-            <div className="md:col-span-1 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 h-fit">
-              <h3 className="font-bold text-slate-900 dark:text-white mb-4">File Info</h3>
-              <div className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
-                <div>
-                  <label className="block text-xs text-slate-400 uppercase tracking-wider mb-1">Filename</label>
-                  <div className="truncate">{file.name}</div>
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 uppercase tracking-wider mb-1">Size</label>
-                  <div>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
-                </div>
-                <button onClick={() => setFile(null)} className="w-full py-2 mt-4 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                  Close File
-                </button>
+            <section
+              aria-label="Selected PDF"
+              className="flex items-center justify-between gap-3 rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3"
+            >
+              <div className="min-w-0">
+                <p className="chef-filename text-sm font-semibold text-[var(--text-primary)]">{file.name}</p>
+                <p className="type-caption text-[var(--text-tertiary)]">{formatBytes(file.size)}</p>
               </div>
-            </div>
+              <Button tone="quiet" onClick={chooseAnotherFile} className="shrink-0">
+                Change
+              </Button>
+            </section>
 
-            {/* Editor */}
-            <div className="md:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                <FileSearch className="text-cyan-500" /> Properties
-              </h3>
-              
-              <div className="space-y-4">
-                {['Title', 'Author', 'Subject', 'Keywords', 'Creator', 'Producer'].map((field) => (
-                  <div key={field}>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{field}</label>
+            <section
+              aria-label="Document properties"
+              className="rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3 sm:p-4"
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button icon={<RotateCcw aria-hidden size={18} />} onClick={resetToSource} block>
+                  Reset to source
+                </Button>
+                <Button
+                  tone="destructive"
+                  icon={<Trash2 aria-hidden size={18} />}
+                  onClick={clearSixProperties}
+                  block
+                >
+                  Clear six properties
+                </Button>
+              </div>
+
+              {/* Kept: without it, "Clear" reads as full sanitization, which
+                  it is not. */}
+              <p className="mt-2 rounded-[var(--radius-field)] bg-[var(--surface-sunken)] px-3 py-2 type-footnote text-[var(--text-secondary)]">
+                Clear removes Title, Author, Subject, Keywords, Creator and Producer. XMP, attachments, annotations,
+                form values, scripts and hidden layers remain.
+              </p>
+
+              <div className="mt-3 space-y-2.5">
+                {METADATA_FIELDS.map(({ key, label }) => (
+                  <div key={key}>
+                    <label htmlFor={`metadata-${key}`} className="mb-1.5 block text-sm font-semibold text-[var(--text-primary)]">
+                      {label}
+                    </label>
                     <input
+                      id={`metadata-${key}`}
                       type="text"
-                      value={(metadata as any)[field.toLowerCase()] || ''}
-                      onChange={(e) => setMetadata({ ...metadata, [field.toLowerCase()]: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
+                      value={typeof metadata[key] === 'string' ? metadata[key] : ''}
+                      onChange={(event) => updateMetadataField(key, event.target.value)}
+                      autoComplete="off"
+                      className="chef-field"
                     />
                   </div>
                 ))}
               </div>
 
-              <div className="mt-8 flex justify-end">
-                <button
+              {/* Kept: an empty field does not mean an empty value. */}
+              <p className="type-footnote mt-3 text-[var(--text-secondary)]">
+                Blank fields leave the source value unchanged.
+              </p>
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  tone="primary"
+                  icon={<Save aria-hidden size={18} />}
+                  busy={status.isProcessing}
                   onClick={handleSave}
-                  disabled={status.isProcessing}
-                  className="px-8 py-3 rounded-xl font-semibold text-white bg-cyan-500 hover:bg-cyan-600 shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2"
+                  className="w-full sm:w-auto"
                 >
-                  {status.isProcessing ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                  <span>Save Metadata</span>
-                </button>
+                  Export updated PDF
+                </Button>
               </div>
-            </div>
+            </section>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+
+      <StatusToast status={status} />
+    </ToolShell>
   );
 };

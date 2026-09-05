@@ -1,0 +1,10 @@
+{
+  "kind": "collection",
+  "ref": "a1_6",
+  "displayName": "Synthetic batch 6",
+  "toolId": "images-to-pdf",
+  "createdAt": 1700000000006,
+  "available": true,
+  "itemCount": 3,
+  "mimeType": "application/zip"
+}

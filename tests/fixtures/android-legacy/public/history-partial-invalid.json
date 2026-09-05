@@ -1,0 +1,19 @@
+{
+  "health": "partial_invalid",
+  "sourceCount": 2,
+  "invalidRecordCount": 1,
+  "returnedCount": 1,
+  "truncated": false,
+  "entries": [
+    {
+      "kind": "file",
+      "ref": "a1_2",
+      "displayName": "Synthetic 002.pdf",
+      "toolId": "split",
+      "createdAt": 1700000000002,
+      "available": true,
+      "mimeType": "application/pdf",
+      "sizeBytes": 8002
+    }
+  ]
+}

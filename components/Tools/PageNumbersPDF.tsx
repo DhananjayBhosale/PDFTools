@@ -1,14 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Expand, Hash, Loader2, Move } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Expand, Hash, Loader2 } from 'lucide-react';
 import { FileUpload } from '../UI/FileUpload';
-import { ChefSlider } from '../UI/ChefSlider';
+import { ChefSliderField } from '../UI/ChefSlider';
 import { PDFFile, ProcessingStatus } from '../../types';
 import { addPageNumbersToPDF, getPDFPageCount } from '../../services/pdfDocument';
 import { loadPDFDocument, renderPageAsImage } from '../../services/pdfBrowser';
-import { downloadBlob } from '../../services/pdfShared';
+import { downloadBlob, isPdfFile } from '../../services/pdfShared';
+import {
+  DEFAULT_PAGE_NUMBER_FONT_SIZE,
+  DEFAULT_PAGE_NUMBER_FORMAT,
+  DEFAULT_PAGE_NUMBER_X_PERCENT,
+  DEFAULT_PAGE_NUMBER_Y_PERCENT,
+  MAX_PAGE_NUMBER_FONT_SIZE,
+  MAX_PDF_TEXT_LENGTH,
+  MIN_PAGE_NUMBER_FONT_SIZE,
+  androidExportFileName,
+  buildPageNumberText,
+  pageNumberLayout,
+} from '../../services/androidParity';
+import { StatusToast } from '../UI/StatusToast';
+import { Button } from '../UI/Primitives';
+import { ToolHeader, ToolPanel, ToolShell } from '../UI/ToolLayout';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -21,26 +35,23 @@ const parsePageInput = (value: string) => {
   return rounded > 0 ? rounded : null;
 };
 
-const buildPreviewLabel = (format: string, pageNumber: number, totalPages: number) => {
-  const trimmed = format.trim();
-  if (!trimmed) return `Page ${pageNumber}`;
-  if (trimmed.includes('{n}') || trimmed.includes('{total}')) {
-    return trimmed.replaceAll('{n}', String(pageNumber)).replaceAll('{total}', String(totalPages));
-  }
-  if (/\d+/.test(trimmed)) {
-    return trimmed.replace(/\d+/, String(pageNumber));
-  }
-  return `${trimmed} ${pageNumber}`;
-};
+/**
+ * Helvetica advance widths as a fraction of the font size. The export measures the real embedded
+ * font, so the preview approximates the same metrics rather than whatever font Canvas resolved.
+ */
+const HELVETICA_AVERAGE_ADVANCE = 0.54;
+const measurePageNumberTextWidth = (value: string, size: number) =>
+  value.length * size * HELVETICA_AVERAGE_ADVANCE;
 
 export const PageNumbersPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
 
-  const [format, setFormat] = useState('Page 1');
-  const [fontSize, setFontSize] = useState(12);
-  const [xPercent, setXPercent] = useState(50);
-  const [yPercent, setYPercent] = useState(10);
+  const [format, setFormat] = useState(DEFAULT_PAGE_NUMBER_FORMAT);
+  const [fontSize, setFontSize] = useState(DEFAULT_PAGE_NUMBER_FONT_SIZE);
+  // Fractions of the page, 0-1, with Y measured from the bottom, matching the app's option string.
+  const [xPercent, setXPercent] = useState(DEFAULT_PAGE_NUMBER_X_PERCENT);
+  const [yPercent, setYPercent] = useState(DEFAULT_PAGE_NUMBER_Y_PERCENT);
   const [startPage, setStartPage] = useState('1');
   const [endPage, setEndPage] = useState('1');
   const [totalPages, setTotalPages] = useState(1);
@@ -54,13 +65,14 @@ export const PageNumbersPDF: React.FC = () => {
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const previewRequestRef = useRef(0);
   const editModeRef = useRef<EditMode>(null);
   const dragRef = useRef({
     startX: 0,
     startY: 0,
-    startXPercent: 50,
-    startYPercent: 10,
-    startFontSize: 12,
+    startXPercent: DEFAULT_PAGE_NUMBER_X_PERCENT,
+    startYPercent: DEFAULT_PAGE_NUMBER_Y_PERCENT,
+    startFontSize: DEFAULT_PAGE_NUMBER_FONT_SIZE,
   });
   const [editing, setEditing] = useState(false);
 
@@ -83,6 +95,8 @@ export const PageNumbersPDF: React.FC = () => {
   }, [previewUrl]);
 
   const renderPreviewPage = useCallback(async (sourceFile: File, requestedPageIndex: number) => {
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
     setPreviewLoading(true);
     try {
       const pdf = await loadPDFDocument(sourceFile);
@@ -93,6 +107,11 @@ export const PageNumbersPDF: React.FC = () => {
         quality: 0.9,
         scale: 1.4,
       });
+
+      if (requestId !== previewRequestRef.current) {
+        URL.revokeObjectURL(preview.objectUrl);
+        return;
+      }
 
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
@@ -105,15 +124,16 @@ export const PageNumbersPDF: React.FC = () => {
       setPreviewError(null);
       setTotalPages(count);
     } catch (error) {
+      if (requestId !== previewRequestRef.current) return;
       console.error(error);
       setPreviewError('Unable to load preview page.');
     } finally {
-      setPreviewLoading(false);
+      if (requestId === previewRequestRef.current) setPreviewLoading(false);
     }
   }, []);
 
   const handleFilesSelected = async (files: File[]) => {
-    if (files.length === 0 || files[0].type !== 'application/pdf') return;
+    if (files.length === 0 || !isPdfFile(files[0])) return;
     const selected = files[0];
     const count = await getPDFPageCount(selected).catch(() => 1);
     const normalizedCount = Math.max(1, count);
@@ -148,22 +168,37 @@ export const PageNumbersPDF: React.FC = () => {
 
   const resolvedStartPage = parsePageInput(startPage) ?? 1;
   const resolvedEndPage = parsePageInput(endPage) ?? totalPages;
-  const previewNumber = clamp(resolvedStartPage, 1, totalPages);
-  const previewText = buildPreviewLabel(format, previewNumber, totalPages);
+  const previewPageNumber = previewPageIndex + 1;
+  const previewIsNumbered = previewPageNumber >= resolvedStartPage && previewPageNumber <= resolvedEndPage;
+  const previewText = buildPageNumberText(format, previewPageNumber, totalPages);
 
-  const measuredTextWidth = useMemo(() => {
-    if (typeof document === 'undefined') return previewText.length * fontSize * 0.5;
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) return previewText.length * fontSize * 0.5;
-    context.font = `${fontSize}px Arial, sans-serif`;
-    return context.measureText(previewText).width;
-  }, [fontSize, previewText]);
+  /**
+   * The layout the export will use, in page points, so the dashed box shows the label's real
+   * clamped position and size instead of a separately invented one.
+   */
+  const layout = useMemo(
+    () =>
+      pageNumberLayout({
+        pageWidth: previewDimensions.width,
+        pageHeight: previewDimensions.height,
+        text: previewText,
+        placement: { xPercent, yPercent },
+        fontSize,
+        measureTextWidth: measurePageNumberTextWidth,
+      }),
+    [fontSize, previewDimensions.height, previewDimensions.width, previewText, xPercent, yPercent],
+  );
 
-  const overlayBoxWidth = Math.max(measuredTextWidth + 24, 90);
-  const overlayBoxHeight = Math.max(fontSize * 1.9, 46);
-  const overlayLeft = clamp((xPercent / 100) * previewSize.width - overlayBoxWidth / 2, 0, previewSize.width - overlayBoxWidth);
-  const overlayTop = clamp((yPercent / 100) * previewSize.height - overlayBoxHeight / 2, 0, previewSize.height - overlayBoxHeight);
+  const previewScaleX = previewSize.width / Math.max(1, previewDimensions.width);
+  const previewScaleY = previewSize.height / Math.max(1, previewDimensions.height);
+  const overlayFontPx = (layout?.fontSize ?? fontSize) * previewScaleY;
+  const overlayBoxWidth = Math.max((layout?.boxWidth ?? 0) * previewScaleX + 16, 48);
+  const overlayBoxHeight = Math.max(overlayFontPx * 1.6, 24);
+  const overlayCenterX = (layout?.placement.xPercent ?? xPercent) * previewSize.width;
+  // The layout's Y is measured from the bottom of the page; CSS `top` runs the other way.
+  const overlayCenterY = (1 - (layout?.placement.yPercent ?? yPercent)) * previewSize.height;
+  const overlayLeft = clamp(overlayCenterX - overlayBoxWidth / 2, 0, Math.max(0, previewSize.width - overlayBoxWidth));
+  const overlayTop = clamp(overlayCenterY - overlayBoxHeight / 2, 0, Math.max(0, previewSize.height - overlayBoxHeight));
 
   const startEditing = (event: React.PointerEvent, mode: Exclude<EditMode, null>) => {
     if (!previewSize.width || !previewSize.height) return;
@@ -191,14 +226,13 @@ export const PageNumbersPDF: React.FC = () => {
       const dy = event.clientY - dragRef.current.startY;
 
       if (mode === 'drag') {
-        const nextX = dragRef.current.startXPercent + (dx / previewSize.width) * 100;
-        const nextY = dragRef.current.startYPercent + (dy / previewSize.height) * 100;
-        setXPercent(clamp(nextX, 2, 98));
-        setYPercent(clamp(nextY, 2, 98));
+        // Dragging down lowers the value, because the value is measured up from the page bottom.
+        setXPercent(clamp(dragRef.current.startXPercent + dx / previewSize.width, 0, 1));
+        setYPercent(clamp(dragRef.current.startYPercent - dy / previewSize.height, 0, 1));
       } else if (mode === 'resize') {
         const primaryDelta = Math.max(dx, dy * 0.7);
         const scaled = dragRef.current.startFontSize * (1 + primaryDelta / 180);
-        setFontSize(clamp(Math.round(scaled), 8, 72));
+        setFontSize(clamp(Math.round(scaled), MIN_PAGE_NUMBER_FONT_SIZE, MAX_PAGE_NUMBER_FONT_SIZE));
       }
     };
 
@@ -224,17 +258,25 @@ export const PageNumbersPDF: React.FC = () => {
       const bytes = await addPageNumbersToPDF(file.file, {
         format,
         fontSize,
-        xPercent: xPercent / 100,
-        yPercent: yPercent / 100,
+        xPercent,
+        yPercent,
         startPage: resolvedStartPage,
         endPage: resolvedEndPage,
       });
 
-      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `numbered-${file.name}`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      downloadBlob(
+        new Blob([bytes], { type: 'application/pdf' }),
+        androidExportFileName('page_numbers', file.name, 'pdf'),
+      );
+      setStatus({ isProcessing: false, progress: 100, message: 'Numbered PDF ready.' });
     } catch (error) {
       console.error(error);
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Failed to add page numbers.' });
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: error instanceof Error ? error.message : 'Failed to add page numbers.',
+      });
     }
   };
 
@@ -245,54 +287,61 @@ export const PageNumbersPDF: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12">
-      <div className="mb-8">
-        <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-          ← Back to Dashboard
-        </Link>
-        <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">Page Numbers</h1>
-        <p className="text-slate-500 dark:text-slate-400">Drag to place page numbers on a real preview. Resize from the corner handle.</p>
-      </div>
+    <ToolShell width="full" centered={!file}>
+      <ToolHeader title="Page Numbers" />
 
       <AnimatePresence mode="wait">
         {!file ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mx-auto max-w-3xl">
-            <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to add page numbers" />
+            <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Choose a PDF for page numbers" />
           </motion.div>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <ToolPanel className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900 dark:text-white">Live Preview</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Page {previewPageIndex + 1} of {totalPages}</div>
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">Live Preview</div>
+                  <div className="text-xs text-[var(--text-tertiary)]">
+                    Page {previewPageIndex + 1} of {totalPages}{previewLoading ? ' · Rendering…' : ''}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
+                    onPointerDown={(event) => startEditing(event, 'resize')}
+                    disabled={previewLoading || !previewUrl || !previewIsNumbered}
+                    className="chef-hit-y flex h-10 w-touch items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] disabled:opacity-55"
+                    aria-label="Resize page number"
+                  >
+                    <Expand aria-hidden size={17} />
+                  </button>
+                  <button
                     onClick={() => jumpPreviewPage(previewPageIndex - 1)}
                     disabled={previewLoading || previewPageIndex <= 0}
-                    className="rounded-md p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800"
+                    className="chef-hit-y flex h-10 w-touch items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] disabled:opacity-55"
+                    aria-label="Previous preview page"
                   >
-                    <ChevronLeft size={16} />
+                    <ChevronLeft aria-hidden size={18} />
                   </button>
                   <button
                     onClick={() => jumpPreviewPage(previewPageIndex + 1)}
                     disabled={previewLoading || previewPageIndex >= totalPages - 1}
-                    className="rounded-md p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800"
+                    className="chef-hit-y flex h-10 w-touch items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] disabled:opacity-55"
+                    aria-label="Next preview page"
                   >
-                    <ChevronRight size={16} />
+                    <ChevronRight aria-hidden size={18} />
                   </button>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-950/50">
+              <div className="rounded-[var(--radius-field)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)] p-2">
                 {previewLoading && !previewUrl && (
-                  <div className="flex h-[320px] items-center justify-center text-slate-500">
-                    <Loader2 className="mr-2 animate-spin" size={18} /> Rendering preview...
+                  <div className="flex items-center justify-center py-6 text-sm text-[var(--text-secondary)]">
+                    <Loader2 aria-hidden className="mr-2 animate-spin" size={18} /> Rendering preview...
                   </div>
                 )}
 
-                {previewError && !previewUrl && <div className="p-6 text-sm text-rose-600">{previewError}</div>}
+                {previewError && !previewUrl && <div className="p-4 text-sm text-[var(--status-danger-text)]">{previewError}</div>}
 
                 {previewUrl && (
                   <div
@@ -302,104 +351,113 @@ export const PageNumbersPDF: React.FC = () => {
                   >
                     <img src={previewUrl} alt="Page preview" className="absolute inset-0 h-full w-full object-contain" />
 
-                    <div
-                      className={`absolute border-2 border-dashed ${editing ? 'border-blue-600' : 'border-blue-500/80'} bg-blue-50/70 backdrop-blur-[1px]`}
-                      style={{
-                        left: overlayLeft,
-                        top: overlayTop,
-                        width: overlayBoxWidth,
-                        height: overlayBoxHeight,
-                        fontSize,
-                      }}
-                      onPointerDown={(event) => startEditing(event, 'drag')}
-                    >
-                      <div className="flex h-full items-center justify-center px-2 text-center font-medium text-slate-700">{previewText}</div>
-                      <button
-                        className="absolute -bottom-3 -right-3 rounded-full bg-blue-600 p-1.5 text-white shadow"
-                        onPointerDown={(event) => startEditing(event, 'resize')}
-                        aria-label="Resize page number"
+                    {previewIsNumbered && (
+                      <div
+                        className={`absolute border-2 border-dashed bg-ink-50/70 ${editing ? 'border-ink-600' : 'border-ink-500'}`}
+                        style={{
+                          left: overlayLeft,
+                          top: overlayTop,
+                          width: overlayBoxWidth,
+                          height: overlayBoxHeight,
+                          fontSize: overlayFontPx,
+                          touchAction: 'none',
+                        }}
+                        onPointerDown={(event) => startEditing(event, 'drag')}
                       >
-                        <Expand size={12} />
-                      </button>
-                    </div>
+                        <div className="flex h-full items-center justify-center px-2 text-center font-medium text-paper-900">{previewText}</div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <Move size={12} /> Drag to place
-                <span className="opacity-40">•</span>
-                <Expand size={12} /> Drag handle to resize
-              </div>
-            </div>
+              {/* The drag/resize hint is gone: the Horizontal and Vertical
+                  sliders below do the same job with visible labels. Only the
+                  case the preview cannot explain itself is kept. */}
+              {!previewIsNumbered && (
+                <p className="type-caption text-[var(--text-secondary)]">This preview page is outside the selected numbering range.</p>
+              )}
+            </ToolPanel>
 
-            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <ToolPanel className="space-y-3">
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Format</label>
-                <input
+                <label htmlFor="page-numbers-format" className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">Format</label>
+                <input id="page-numbers-format"
                   value={format}
                   onChange={(event) => setFormat(event.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  maxLength={MAX_PDF_TEXT_LENGTH}
+                  className="chef-field"
                 />
-                <p className="mt-1 text-xs text-slate-500">
-                  Use <code>{'{n}'}</code> for page number and <code>{'{total}'}</code> for total pages.
+                {/* Kept: the token syntax is not guessable from the field. */}
+                <p className="type-caption mt-1 text-[var(--text-tertiary)]">
+                  <code>{'{n}'}</code> is the page number, <code>{'{total}'}</code> the total.
                 </p>
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Font size ({fontSize.toFixed(1).replace(/\.0$/, '')} pt)
-                </label>
-                <ChefSlider min={8} max={72} step={0.5} value={fontSize} onChange={setFontSize} ariaLabel="Page number font size" />
+                <ChefSliderField
+                  label="Font size"
+                  suffix="pt"
+                  decimals={1}
+                  min={MIN_PAGE_NUMBER_FONT_SIZE}
+                  max={MAX_PAGE_NUMBER_FONT_SIZE}
+                  step={0.5}
+                  value={fontSize}
+                  onChange={setFontSize}
+                  ariaLabel="Page number font size"
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Horizontal ({Math.round(xPercent)}%)</label>
-                  <ChefSlider min={2} max={98} step={0.25} value={xPercent} onChange={setXPercent} ariaLabel="Page number horizontal position" />
+                  <ChefSliderField label="Horizontal" suffix="%" decimals={2} min={0} max={100} step={0.25} value={xPercent * 100} onChange={(next) => setXPercent(next / 100)} ariaLabel="Page number horizontal position" />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Vertical ({Math.round(yPercent)}%)</label>
-                  <ChefSlider min={2} max={98} step={0.25} value={yPercent} onChange={setYPercent} ariaLabel="Page number vertical position" />
+                  <ChefSliderField label="From bottom" suffix="%" decimals={2} min={0} max={100} step={0.25} value={yPercent * 100} onChange={(next) => setYPercent(next / 100)} ariaLabel="Page number vertical position" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Start page</label>
-                  <input
+                  <label htmlFor="page-numbers-start" className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">Start page</label>
+                  <input id="page-numbers-start"
                     value={startPage}
                     onChange={(event) => setStartPage(event.target.value.replace(/[^\d]/g, ''))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    className="chef-field"
                     inputMode="numeric"
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">End page</label>
-                  <input
+                  <label htmlFor="page-numbers-end" className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">End page</label>
+                  <input id="page-numbers-end"
                     value={endPage}
                     onChange={(event) => setEndPage(event.target.value.replace(/[^\d]/g, ''))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    className="chef-field"
                     inputMode="numeric"
                   />
                 </div>
               </div>
 
-              <div className={`rounded-lg px-3 py-2 text-xs ${validationMessage ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-slate-50 text-slate-600 dark:bg-slate-800/40 dark:text-slate-300'}`}>
-                {validationMessage ?? `Numbering applies to pages ${resolvedStartPage} to ${resolvedEndPage}.`}
+              <div role="status" aria-live="polite" className={`rounded-[var(--radius-field)] px-3 py-2 text-xs ${validationMessage ? 'bg-[var(--status-danger-quiet)] text-[var(--status-danger-text)]' : 'bg-[var(--surface-sunken)] text-[var(--text-secondary)]'}`}>
+                {validationMessage ?? (resolvedStartPage === 1 && resolvedEndPage === totalPages
+                  ? `Numbering applies to all ${totalPages} pages.`
+                  : `Numbering applies to pages ${resolvedStartPage} to ${resolvedEndPage}.`)}
               </div>
 
-              <button
-                onClick={handleApply}
-                disabled={status.isProcessing || !!validationMessage}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-3 font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
+              <Button
+                tone="primary"
+                block
+                busy={status.isProcessing}
+                disabled={!!validationMessage}
+                icon={<Hash aria-hidden size={18} />}
+                onClick={() => void handleApply()}
               >
-                {status.isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Hash size={18} />}
-                <span>Add Page Numbers</span>
-              </button>
+                {status.isProcessing ? status.message || 'Applying page numbers...' : 'Export numbered PDF'}
+              </Button>
 
               <button
                 onClick={() => {
+                  previewRequestRef.current += 1;
                   setFile(null);
                   if (previewUrlRef.current) {
                     URL.revokeObjectURL(previewUrlRef.current);
@@ -407,16 +465,16 @@ export const PageNumbersPDF: React.FC = () => {
                   }
                   setPreviewUrl(null);
                 }}
-                className="w-full py-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                className="chef-pressable chef-hit-y w-full rounded-[var(--radius-control)] py-2 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)]"
               >
                 Choose another file
               </button>
-            </div>
+            </ToolPanel>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {status.error && <div className="fixed bottom-3 right-3 rounded-lg bg-rose-600 px-3 py-2 text-sm text-white">{status.error}</div>}
-    </div>
+      <StatusToast status={status} />
+    </ToolShell>
   );
 };

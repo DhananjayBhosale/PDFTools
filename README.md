@@ -40,7 +40,7 @@
   <img alt="Open source" src="https://img.shields.io/badge/open%20source-yes-059669?style=flat-square">
   <img alt="No server uploads" src="https://img.shields.io/badge/PDF%20uploads-none-10b981?style=flat-square">
   <img alt="Browser processing" src="https://img.shields.io/badge/processing-browser%20local-2563eb?style=flat-square">
-  <img alt="Tools" src="https://img.shields.io/badge/tools-29-7c3aed?style=flat-square">
+  <img alt="Tools" src="https://img.shields.io/badge/tools-34-7c3aed?style=flat-square">
   <img alt="React" src="https://img.shields.io/badge/React-18-149eca?style=flat-square&logo=react&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Vite" src="https://img.shields.io/badge/Vite-6-646cff?style=flat-square&logo=vite&logoColor=white">
@@ -62,7 +62,7 @@ That matters for contracts, invoices, tax forms, school records, IDs, resumes, i
   </tr>
   <tr>
     <td><strong>No account wall</strong><br>Use the public app without signing in.</td>
-    <td><strong>Practical toolkit</strong><br>29 tools covering daily PDF work.</td>
+    <td><strong>Practical toolkit</strong><br>34 browser tools, including 26 Android-mapped surfaces.</td>
     <td><strong>Static deploy</strong><br>Hosted on Cloudflare Pages, portable to static hosts.</td>
   </tr>
 </table>
@@ -91,30 +91,53 @@ PDF Chef is not a cloud conversion pipeline. It is a static web app with client-
 
 ## Toolkit
 
-PDF Chef focuses on tools people actually need during day-to-day document work.
+PDF Chef currently ships 34 browser tools. Twenty-six catalog entries map to Android app
+surfaces (including the Android reader); the remaining tools are browser-only additions.
+The catalog verifier keeps names, routes, and Android mappings aligned.
 
-| Arrange | Convert and create | Review and secure |
-| --- | --- | --- |
-| Merge PDFs | Compress PDFs | View PDFs |
-| Split PDFs | PDF to JPG, PNG, WebP | Edit PDF overlays |
-| Reorder pages | Image to PDF | Compare PDFs |
-| Rotate pages | Make PDF from photos | Extract text and OCR |
-| Delete pages | Extract embedded images | View and edit metadata |
-| Extract selected pages |  | Remove metadata |
-| Add page numbers |  | Remove annotations |
-| Add watermarks |  | Sanitize PDFs |
-| Flatten form fields |  | Sign PDFs |
-| Crop margins |  | Protect PDFs |
-| Add headers and footers |  | Unlock PDFs |
-| Remove blank pages |  | Repair PDFs |
+| Edit | Convert | Secure | Optimize |
+| --- | --- | --- | --- |
+| View PDF | Create PDF (camera or photos) | Protect PDF | Compress PDF |
+| Merge PDF | Image to PDF | Unlock PDF | Flatten PDF |
+| Split PDF | PDF to Image (JPG, PNG, WebP) | Metadata | Repair PDF |
+| Edit PDF (beta) | PDF to Word (beta) | Remove metadata | Compare Summary |
+| Make Fillable | Word to PDF (beta) | Remove annotations | Remove blank pages |
+| Sign PDF | PowerPoint to PDF (beta) | Sanitize | Extract images |
+| Watermark PDF | Extract Text (text layer or OCR) |  | Batch Processing |
+| Delete Pages |  |  |  |
+| Page Numbers |  |  |  |
+| Reorder Pages |  |  |  |
+| Rotate Pages |  |  |  |
+| Extract Pages |  |  |  |
+| Crop |  |  |  |
+| Header & Footer |  |  |  |
+
+All 34 tools run in the browser. **Make Fillable** suggests fields from selectable text
+labels and visible form geometry, and also lets you draw text, multiline, checkbox, radio,
+and dropdown fields manually. Export creates real AcroForm fields rather than a screenshot
+or flattened overlay. The expanded **Edit PDF** workspace can fill detected form fields and
+add, move, resize, and delete text, images, rectangles, ellipses, lines, and arrows, with
+undo/redo before export.
+
+**Word to PDF** accepts `.docx` files and preserves text, line breaks, tabs, table-cell text,
+and explicit page breaks; it does not reproduce Word styling, images, or table grids.
+**PowerPoint to PDF** renders `.pptx` slides locally at their native aspect ratio; fonts may
+be substituted, and speaker notes, animations, video, and audio are not exported.
+**Batch Processing** applies one of 13 operations (compress, split, PDF to image, PDF to
+Word, rotate, protect, unlock, clear metadata, flatten, extract text, watermark, page
+numbers, or repair) to multiple PDFs and downloads one ZIP.
 
 ## Product quality
 
 - **Preview-first workflows**: compression, signing, watermarking, page numbers, OCR, compare, and conversion flows show visual feedback before export.
 - **Cleanup tools**: remove metadata, annotations, blank pages, and hidden document data.
 - **Mobile-aware UI**: touch-friendly page operations and responsive layouts.
+- **Local workspace**: output history is stored in browser IndexedDB (up to 50 outputs), while
+  settings, recent tools, and onboarding state are kept locally in this browser.
+- **Offline workspace**: after one successful online load, the versioned service worker cache
+  includes every routed tool, local font, PDF/QPDF worker, and the English OCR runtime/model.
 - **SEO coverage**: each public tool has route-level metadata and sitemap coverage.
-- **Catalog verification**: `npm run test:catalog` prevents dashboard, route, SEO, and sitemap drift.
+- **Catalog verification**: `npm run test:catalog` prevents catalog, route, SEO, sitemap, and Android-parity drift.
 
 ## Architecture
 
@@ -130,6 +153,11 @@ Browser
 Cloudflare Pages
   -> Serves static HTML, CSS, JS, images, and workers
   -> Does not receive user PDFs for core processing
+
+Browser workspace
+  -> IndexedDB stores optional local output history (up to 50 files)
+  -> localStorage stores settings, recent tools, savings, and onboarding state
+  -> Service worker precaches the complete production artifact for offline startup and tools
 ```
 
 ## Tech stack
@@ -139,7 +167,7 @@ Cloudflare Pages
 | App | React 18, TypeScript, Vite |
 | Styling | Tailwind CSS, lucide-react |
 | PDF runtime | PDF.js, pdf-lib, jsPDF |
-| OCR and assets | Tesseract.js, JSZip |
+| OCR and assets | Tesseract.js, JSZip, browser-side DOCX/PPTX renderers |
 | Hosting | Cloudflare Pages |
 | Verification | TypeScript, catalog verifier, production build |
 
@@ -160,9 +188,30 @@ Open the local URL printed by Vite.
 npm run lint
 npm run test:catalog
 npm run build
+# With a production preview already running:
+PDF_CHEF_URL=http://127.0.0.1:4173 npm run test:browser:parity
 ```
 
-`test:catalog` verifies that dashboard tools have matching app routes, SEO metadata, and sitemap entries.
+`test:catalog` verifies that catalog tools (`components/Tools/toolCatalog.ts`) have matching
+app routes, SEO metadata, and sitemap entries, that every tool declares whether it runs in
+the browser, and that every Android tool listed in `ANDROID_TOOLS` maps to exactly one
+catalog entry, in the app's own order.
+
+## Privacy limitations
+
+“Local processing” means the document bytes are processed by this browser and are not sent to
+a PDF Chef document-processing backend. It does not make the browser or device an isolated
+environment: the deployed site still receives normal requests needed to deliver its assets,
+and Cloudflare may process standard delivery and security metadata such as IP address, user
+agent, and request URL. Browser extensions, compromised devices, shared-device users, browser
+storage policies, and operating-system backups are outside PDF Chef's control.
+
+The optional local history stores generated output blobs in IndexedDB until you delete them or
+clear history; disable it for shared devices. Offline startup is limited to assets already
+cached after a successful online load, and large files may still exceed available browser
+memory. Review converted Word and PowerPoint output before sharing because those converters
+intentionally support a defined subset of source formatting. OCR and other browser workers
+also depend on the device's available CPU, memory, and browser capabilities.
 
 ## Deploy
 

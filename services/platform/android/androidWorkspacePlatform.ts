@@ -1,0 +1,619 @@
+import type {
+  RecentEntry,
+  RecentRecord,
+  StoredCollection,
+  StoredDocument,
+} from '../../domain/workspaceModels.ts';
+import type {
+  ImportedDocument,
+  PendingImportDeliveryService,
+  RecordAbilities,
+  RecordRecoveryService,
+  UndoReceipt,
+  WorkspacePlatform,
+} from '../contracts.ts';
+import {
+  ANDROID_PICKER_MIME_TYPES,
+  ANDROID_DOCUMENT_MAXIMUM_CHUNK_BYTES,
+  AndroidDocumentsClient,
+  isAndroidDocumentsAvailable,
+  type AndroidOwnedDocument,
+  type AndroidPendingDocument,
+  type SupportedPickerMime,
+} from './androidDocuments.ts';
+import {
+  createAndroidDocumentScannerService,
+  isAndroidDocumentScannerAvailable,
+} from './androidDocumentScanner.ts';
+import {
+  createAndroidPdfReaderService,
+  isAndroidNativePdfReaderAvailable,
+} from './androidPdfReader.ts';
+import {
+  AndroidLegacyInspectorClient,
+  isAndroidLegacyInspectorAvailable,
+} from './androidLegacyInspector.ts';
+import {
+  AndroidAppMetadataClient,
+  isAndroidAppMetadataAvailable,
+} from './androidAppMetadata.ts';
+import {
+  AndroidStorageStatsClient,
+  isAndroidStorageStatsAvailable,
+} from './androidStorageStats.ts';
+import type {
+  AndroidLegacyCollectionHistoryEntry,
+  AndroidLegacyFileHistoryEntry,
+  AndroidLegacyHistoryEntry,
+} from './legacyCompatibilityContracts.ts';
+
+type AndroidLegacyHistoryClient = Pick<AndroidLegacyInspectorClient, 'readHistory'>;
+
+const LEGACY_HISTORY_UNAVAILABLE_ERROR = 'Legacy history is unavailable.';
+
+/**
+ * The Android workspace, assembled once.
+ *
+ * The browser adapter still owns everything it already did: results produced in
+ * this session, their bytes, and the save and share paths that work in a
+ * WebView. This adds the two things the browser cannot see — documents this app
+ * owns on the device, and the file history the older Android app left behind —
+ * and routes their delete and clear to whatever actually owns them.
+ *
+ * No native address, path or URI is constructed here. A document is addressed
+ * only by its opaque `d1_` or `a1_` ref, and its bytes arrive as bounded chunks
+ * over the same seam every other Android read uses.
+ */
+
+/** Native documents are listed under their own id space so no browser id can collide. */
+const SYNTHETIC_PREFIX = 'android:';
+/** The older Android app's history is readable and openable, and nothing more. */
+const LEGACY_REF = /^a1_[1-9][0-9]*$/;
+/**
+ * The exact durable ref shape this app owns, held to the same form the client
+ * validates. A row addressed by anything else is not ours to rename or trash,
+ * and asking the native store about it would be a request it must reject.
+ */
+const OWNED_REF = /^d1_[A-Za-z0-9_-]{22,64}$/;
+
+const syntheticId = (ref: string): string => `${SYNTHETIC_PREFIX}${ref}`;
+
+const refFromSyntheticId = (id: unknown): string | null =>
+  typeof id === 'string' && id.startsWith(SYNTHETIC_PREFIX)
+    ? id.slice(SYNTHETIC_PREFIX.length)
+    : null;
+
+export const isLegacyAndroidRef = (ref: unknown): boolean =>
+  typeof ref === 'string' && LEGACY_REF.test(ref);
+
+export const isOwnedAndroidRef = (ref: unknown): ref is string =>
+  typeof ref === 'string' && OWNED_REF.test(ref);
+
+const FALLBACK_NAME = 'Document';
+
+interface AndroidDeviceFactClients {
+  readonly metadata: Pick<AndroidAppMetadataClient, 'getMetadata'> | null;
+  readonly storage: Pick<AndroidStorageStatsClient, 'getStorageStats'> | null;
+}
+
+const deviceFactClients = (
+  override: AndroidDeviceFactClients | undefined,
+): AndroidDeviceFactClients => override ?? {
+  metadata: isAndroidAppMetadataAvailable() ? new AndroidAppMetadataClient() : null,
+  storage: isAndroidStorageStatsAvailable() ? new AndroidStorageStatsClient() : null,
+};
+
+/**
+ * Device facts already have strict native clients. This adapter only translates
+ * their method names into the shared Settings services; it neither substitutes
+ * defaults nor catches failures, so the existing hooks keep their error state.
+ */
+const withDeviceFacts = (
+  base: WorkspacePlatform,
+  clients: AndroidDeviceFactClients,
+): WorkspacePlatform => {
+  const platform: WorkspacePlatform = { ...base };
+  const metadata = clients.metadata;
+  const storage = clients.storage;
+  if (metadata) {
+    platform.applicationMetadata = {
+      getApplicationMetadata: () => metadata.getMetadata(),
+    };
+  }
+  if (storage) {
+    platform.storageInformation = {
+      getStorageInformation: () => storage.getStorageStats(),
+    };
+  }
+  return platform;
+};
+
+/**
+ * One `readChunk` per pull, so a large document is never held in memory twice
+ * and a cancelled read stops asking for the next window.
+ */
+const openOwnedStream = (
+  documents: AndroidDocumentsClient,
+  ref: string,
+): ReadableStream<Uint8Array> => {
+  let offset = 0;
+  let done = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (done) return;
+      const chunk = await documents.readChunk(ref, offset, ANDROID_DOCUMENT_MAXIMUM_CHUNK_BYTES);
+      offset = chunk.nextOffset;
+      if (chunk.data.length > 0) controller.enqueue(chunk.data);
+      if (chunk.done) {
+        done = true;
+        controller.close();
+      }
+    },
+  });
+};
+
+interface NativeDocumentView {
+  kind: 'file';
+  ref: string;
+  name: string;
+  mimeType: string;
+}
+
+interface NativeCollectionView {
+  kind: 'collection';
+  ref: string;
+  name: string;
+}
+
+type NativeView = NativeDocumentView | NativeCollectionView;
+
+const viewOf = (record: RecentRecord): NativeView | null => {
+  const ref = refFromSyntheticId(record.entry.id);
+  if (!ref) return null;
+  if (record.collection?.ref === ref && isLegacyAndroidRef(ref)) {
+    return {
+      kind: 'collection',
+      ref,
+      name: record.collection.name ?? record.entry.name ?? FALLBACK_NAME,
+    };
+  }
+  const legacy = isLegacyAndroidRef(ref);
+  return {
+    kind: 'file',
+    ref,
+    name: record.entry.name ?? FALLBACK_NAME,
+    mimeType: record.document?.mimeType
+      ?? record.entry.mimeType
+      ?? (legacy ? 'application/pdf' : 'application/octet-stream'),
+  };
+};
+
+const nativeBlob = async (documents: AndroidDocumentsClient, view: NativeView): Promise<Blob> =>
+  new Response(openOwnedStream(documents, view.ref)).blob();
+
+const nativeFile = async (
+  documents: AndroidDocumentsClient,
+  view: NativeDocumentView,
+): Promise<File> =>
+  new File([await nativeBlob(documents, view)], view.name, { type: view.mimeType });
+
+const ownedRecordOf = (item: AndroidOwnedDocument): RecentRecord => {
+  const ref = item.ref as StoredDocument['ref'];
+  const document: StoredDocument = {
+    ref,
+    name: item.displayName ?? FALLBACK_NAME,
+    mimeType: item.mimeType,
+    sizeBytes: item.sizeBytes,
+    contentHash: item.contentHash,
+    retainedAt: item.createdAt,
+  };
+  const entry: RecentEntry = {
+    id: syntheticId(item.ref),
+    documentRef: ref,
+    name: item.displayName ?? FALLBACK_NAME,
+    mimeType: item.mimeType,
+    // The store keeps the file, not the operation that made it, so claiming a
+    // tool here would be an invention. Recent already says "Tool not recorded".
+    toolId: null,
+    createdAt: item.createdAt,
+    inputSizeBytes: null,
+    outputSizeBytes: item.sizeBytes,
+    spaceSavedBytes: null,
+  };
+  return { entry, document, available: item.available };
+};
+
+const importedDocumentOf = (item: AndroidPendingDocument): ImportedDocument => ({
+  document: {
+    ref: item.ref as StoredDocument['ref'],
+    name: item.displayName ?? FALLBACK_NAME,
+    mimeType: item.mimeType,
+    sizeBytes: item.sizeBytes,
+    contentHash: item.contentHash,
+    retainedAt: item.createdAt,
+  },
+});
+
+/**
+ * A history row from the older app. Everything it does not record stays
+ * unrecorded: no MIME, size or time is invented to make a row look complete.
+ * Only a verified PDF with a real positive size gets a document, which is what
+ * decides whether the native reader will take it; everything else keeps the web
+ * reader it already had.
+ */
+const legacyRecordOf = (item: AndroidLegacyFileHistoryEntry): RecentRecord => {
+  const ref = item.ref as string as StoredDocument['ref'];
+  const readableAsPdf =
+    item.available
+    && item.mimeType === 'application/pdf'
+    && typeof item.sizeBytes === 'number'
+    && item.sizeBytes > 0;
+  const entry: RecentEntry = {
+    id: syntheticId(item.ref),
+    documentRef: ref,
+    name: item.displayName,
+    mimeType: item.mimeType,
+    toolId: item.toolId,
+    createdAt: item.createdAt,
+    inputSizeBytes: null,
+    outputSizeBytes: item.sizeBytes,
+    spaceSavedBytes: null,
+  };
+  return {
+    entry,
+    document: readableAsPdf
+      ? {
+          ref,
+          name: item.displayName,
+          mimeType: 'application/pdf',
+          sizeBytes: item.sizeBytes,
+          contentHash: null,
+          retainedAt: item.createdAt,
+        }
+      : null,
+    available: item.available,
+  };
+};
+
+/**
+ * A legacy batch output is one logical collection, not a pretend PDF. Child
+ * names and native addresses remain behind the opaque collection ref; Recent
+ * receives only the aggregate facts the legacy inspector already exposes.
+ */
+const legacyCollectionRecordOf = (
+  item: AndroidLegacyCollectionHistoryEntry,
+): RecentRecord => {
+  const ref = item.ref as string as StoredCollection['ref'];
+  const collection: StoredCollection = {
+    ref,
+    name: item.displayName,
+    // The legacy index records a child count but no trustworthy aggregate size.
+    sizeBytes: null,
+    retainedAt: item.createdAt,
+    itemCount: item.itemCount,
+  };
+  const entry: RecentEntry = {
+    id: syntheticId(item.ref),
+    // A collection has no single document ref or byte representation.
+    documentRef: null,
+    name: item.displayName,
+    mimeType: null,
+    toolId: item.toolId,
+    createdAt: item.createdAt,
+    inputSizeBytes: null,
+    outputSizeBytes: null,
+    spaceSavedBytes: null,
+  };
+  return {
+    entry,
+    document: null,
+    collection,
+    available: item.available,
+  };
+};
+
+const legacyWorkspaceRecordOf = (item: AndroidLegacyHistoryEntry): RecentRecord =>
+  item.kind === 'collection' ? legacyCollectionRecordOf(item) : legacyRecordOf(item);
+
+/** The one opaque durable identity used for cross-layer merge/deduplication. */
+const retainedRefOf = (record: RecentRecord): string | null =>
+  typeof record.document?.ref === 'string'
+    ? record.document.ref
+    : typeof record.collection?.ref === 'string'
+      ? record.collection.ref
+      : typeof record.entry.documentRef === 'string'
+        ? record.entry.documentRef
+        : null;
+
+/**
+ * The Android platform. `base` stays responsible for everything produced in the
+ * current session; this only adds the durable and legacy layers on top of it.
+ */
+export const createAndroidWorkspacePlatform = (
+  base: WorkspacePlatform,
+  documentsOverride?: AndroidDocumentsClient,
+  activatePendingRecovery = documentsOverride === undefined,
+  deviceFactsOverride?: AndroidDeviceFactClients,
+  legacyOverride?: AndroidLegacyHistoryClient | null,
+): WorkspacePlatform => {
+  const platformWithDeviceFacts = withDeviceFacts(base, deviceFactClients(deviceFactsOverride));
+  // Without the registered plugin there is no durable store to speak for, so
+  // no durable capability is advertised. Independent public device facts may
+  // still be available, so they are not made contingent on document storage.
+  if (!documentsOverride && !isAndroidDocumentsAvailable()) return platformWithDeviceFacts;
+
+  const documents = documentsOverride ?? new AndroidDocumentsClient();
+  const legacy = legacyOverride === undefined
+    ? (isAndroidLegacyInspectorAvailable() ? new AndroidLegacyInspectorClient() : null)
+    : legacyOverride;
+
+  const listOwned = async (): Promise<readonly RecentRecord[]> =>
+    (await documents.listOwned()).map(ownedRecordOf);
+
+  const listLegacy = async (): Promise<readonly RecentRecord[]> => {
+    if (!legacy) return [];
+    const snapshot = await legacy.readHistory();
+    if (snapshot.health === 'corrupt') {
+      throw new Error(LEGACY_HISTORY_UNAVAILABLE_ERROR);
+    }
+    return snapshot.entries.map(legacyWorkspaceRecordOf);
+  };
+
+  /**
+   * Per-row truth about what this build can do to one record. Only a canonical
+   * durable ref whose file this app still holds can be renamed or trashed;
+   * every other row carries the reason it cannot, so no control is ever
+   * disabled without one.
+   */
+  const abilitiesFor = (record: RecentRecord): RecordAbilities => {
+    const ref = refFromSyntheticId(record.entry.id);
+    if (isLegacyAndroidRef(ref)) {
+      return { rename: false, reversibleDelete: false, limitation: 'legacy-read-only' };
+    }
+    if (!isOwnedAndroidRef(ref)) {
+      return { rename: false, reversibleDelete: false, limitation: 'session-only' };
+    }
+    if (!record.available) {
+      return { rename: false, reversibleDelete: false, limitation: 'file-missing' };
+    }
+    return { rename: true, reversibleDelete: true, limitation: null };
+  };
+
+  /** The one place a record turns into a durable ref this app may write to. */
+  const ownedRefFor = (record: RecentRecord): string => {
+    const ref = refFromSyntheticId(record.entry.id);
+    if (!isOwnedAndroidRef(ref) || !record.available) {
+      throw new Error('This result is not one this app keeps on this device.');
+    }
+    return ref;
+  };
+
+  const recordRecovery: RecordRecoveryService = {
+    abilitiesFor,
+    async deleteReversibly(record) {
+      // The receipt is all that is kept: no path, no name, no bytes.
+      const { undoRef, expiresAt } = await documents.trashOwned(ownedRefFor(record));
+      return { undoRef, expiresAt };
+    },
+    async restore(receipt: UndoReceipt) {
+      await documents.restoreOwned(receipt.undoRef);
+    },
+  };
+
+  const pendingImports: PendingImportDeliveryService = {
+    async start(consume) {
+      let stopped = false;
+      let delivery = Promise.resolve();
+      const deliver = () => {
+        const attempt = delivery.catch(() => undefined).then(async () => {
+          if (stopped) return;
+          const batch = await documents.takePendingImports();
+          if (batch.batchRef === null) return;
+          const imports = batch.items.map(importedDocumentOf);
+          await consume(imports);
+          if (stopped) return;
+          await documents.acknowledgePendingImports(
+            batch.batchRef,
+            batch.items.map(item => item.ref),
+          );
+        });
+        delivery = attempt;
+        return attempt;
+      };
+
+      // Listener first, durable peek second: retained or lost events cannot hide a batch.
+      const removeListener = await documents.addPendingImportListener(() => {
+        void deliver().catch(() => {
+          // The durable pending marker remains available to a later event or relaunch.
+        });
+      });
+      try {
+        await deliver();
+      } catch (error) {
+        stopped = true;
+        await removeListener();
+        throw error;
+      }
+      return async () => {
+        stopped = true;
+        await removeListener();
+      };
+    },
+  };
+
+  // The Android host has no separate React-owned bootstrap for pending imports.
+  // Start the durable listener/peek as part of platform construction so a lost
+  // event or process restart cannot strand a completed picker result. The
+  // consumer boundary is intentionally storage-only: after it resolves, native
+  // acknowledgement atomically promotes the exact batch into listOwned().
+  let pendingRecoveryFailure: unknown = null;
+  const pendingRecoveryReady = activatePendingRecovery
+    ? pendingImports.start(async imports => { void imports; })
+        .then(() => undefined)
+        .catch((error: unknown) => { pendingRecoveryFailure = error; })
+    : Promise.resolve();
+
+  const requirePendingRecovery = async (): Promise<void> => {
+    await pendingRecoveryReady;
+    if (pendingRecoveryFailure !== null) throw pendingRecoveryFailure;
+  };
+
+  const pickerMimeTypes = (values: readonly string[] | undefined): readonly SupportedPickerMime[] => {
+    const selected = values ?? ANDROID_PICKER_MIME_TYPES;
+    const allowed = new Set<string>(ANDROID_PICKER_MIME_TYPES);
+    if (selected.length < 1 || selected.length > ANDROID_PICKER_MIME_TYPES.length
+        || selected.some(value => !allowed.has(value))
+        || new Set(selected).size !== selected.length) {
+      throw new TypeError('Android document request is invalid.');
+    }
+    return selected as readonly SupportedPickerMime[];
+  };
+
+  const platform: WorkspacePlatform = {
+    ...platformWithDeviceFacts,
+
+    capabilities: {
+      // Owned documents survive a relaunch, which is the whole point of this layer.
+      durableDocuments: true,
+      // The durable store renames the record it already holds, so a new name
+      // outlives the session. It is true of the rows this app owns and of
+      // nothing else, which is why the surface asks `recordRecovery` per row
+      // rather than reading this flag as a promise about every row.
+      persistentRename: true,
+      // Session and native records both retain metadata when only their payload
+      // bytes are cleared, so the two destructive actions are now independent.
+      separateClearActions: true,
+    },
+
+    documentImport: {
+      async importDocuments(options) {
+        const picked = await documents.pickDocuments(
+          pickerMimeTypes(options?.acceptedMimeTypes),
+          100,
+        );
+        if (picked.status === 'cancelled') return [];
+        const imports = picked.items.map(importedDocumentOf);
+        // Mapping the complete strict DTO is this direct call's consumer boundary.
+        // Only then is the accepted T039 pending-to-owned transition acknowledged.
+        await documents.acknowledgePendingImports(
+          picked.batchRef,
+          picked.items.map(item => item.ref),
+        );
+        return imports;
+      },
+      async takePendingImports() {
+        const batch = await documents.takePendingImports();
+        return batch.items.map(importedDocumentOf);
+      },
+    },
+
+    pendingImports,
+
+    recordRecovery,
+
+    records: {
+      async list() {
+        // Recovery began during platform construction; awaiting it here does
+        // not make listing a mutation trigger. A failed native recovery stays
+        // a typed failure instead of being misreported as an empty Recent list.
+        await requirePendingRecovery();
+        const [session, owned, older] = await Promise.all([
+          base.records.list(),
+          listOwned(),
+          listLegacy(),
+        ]);
+        const seen = new Set<string>();
+        for (const record of session) {
+          const ref = retainedRefOf(record);
+          if (ref !== null) seen.add(ref);
+        }
+        const merge = (records: readonly RecentRecord[]) =>
+          records.filter((record) => {
+            const ref = retainedRefOf(record);
+            if (ref === null || seen.has(ref)) return false;
+            seen.add(ref);
+            return true;
+          });
+        return [...session, ...merge(owned), ...merge(older)];
+      },
+      async delete(id) {
+        const ref = refFromSyntheticId(id);
+        if (!ref) {
+          await base.records.delete(id);
+          return;
+        }
+        // The older app's history is read-only by contract. It is never handed
+        // to the owned-document delete, and the interface says so rather than
+        // letting a press fail silently.
+        if (isLegacyAndroidRef(ref)) {
+          throw new Error('Files from the older Android app are read-only here.');
+        }
+        await documents.deleteOwned(ref);
+      },
+      async clearRecords() {
+        await base.records.clearRecords();
+        await documents.clearOwned();
+      },
+      async clearDocuments() {
+        await base.records.clearDocuments();
+        await documents.clearOwnedPayloads();
+      },
+    },
+
+    async save(record, name) {
+      const view = viewOf(record);
+      if (!view) return base.save(record, name);
+      await documents.exportItem(
+        view.ref,
+        name || view.name,
+        view.kind === 'file' ? view.mimeType as SupportedPickerMime : undefined,
+      );
+    },
+
+    async share(record, name) {
+      const view = viewOf(record);
+      if (!view) {
+        if (!base.share) throw new Error('Sharing is not available on this device.');
+        return base.share(record, name);
+      }
+      await documents.shareItem(
+        view.ref,
+        name || view.name,
+        view.kind === 'file' ? view.mimeType as SupportedPickerMime : undefined,
+      );
+    },
+
+    async rename(record, name) {
+      const ref = refFromSyntheticId(record.entry.id);
+      if (ref === null) {
+        if (!base.rename) throw new Error('This result cannot be renamed on this device.');
+        return base.rename(record, name);
+      }
+      if (isLegacyAndroidRef(ref)) {
+        throw new Error('Files from the older Android app are read-only here.');
+      }
+      // The same durable record is renamed in place. Nothing is copied, and the
+      // ref the list already holds keeps addressing it.
+      await documents.renameItem(ownedRefFor(record), name);
+    },
+
+    async reopen(record) {
+      const view = viewOf(record);
+      if (!view) return base.reopen(record);
+      if (view.kind === 'collection') {
+        throw new Error('A collection cannot be opened as a single document.');
+      }
+      return nativeFile(documents, view);
+    },
+  };
+
+  if (isAndroidDocumentScannerAvailable()) {
+    platform.documentScanner = createAndroidDocumentScannerService();
+  }
+
+  if (isAndroidNativePdfReaderAvailable()) {
+    platform.pdfReader = createAndroidPdfReaderService(documents);
+  }
+
+  return platform;
+};

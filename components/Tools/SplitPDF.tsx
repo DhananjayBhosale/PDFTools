@@ -1,73 +1,114 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
 import { getPdfPagePreviews } from '../../services/pdfBrowser';
-import { splitPDF, extractPages, splitPDFByPagesPerFile } from '../../services/pdfDocument';
-import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
-import { Scissors, FileText, Loader2, CheckSquare, Square, Download } from 'lucide-react';
+import {
+  extractPages,
+  getPDFPageCount,
+  splitPDFByMaximumSize,
+  splitPDFByPagesPerFile,
+  type SplitResult,
+} from '../../services/pdfDocument';
+import { downloadBlob, isPdfFile, revokeObjectUrls } from '../../services/pdfShared';
+import { androidExportDirectoryName, androidExportFileName } from '../../services/androidParity';
+import { Download, FileText, Loader2, RefreshCw, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
-import { Link } from 'react-router-dom';
 import { PageThumbnail } from '../UI/PageThumbnail';
 import { StatusToast } from '../UI/StatusToast';
+import { SegmentedControl } from '../UI/Primitives';
+import { ToolHeader, ToolPanel, ToolSelectionBar, ToolShell } from '../UI/ToolLayout';
 import { SEOHead } from '../SEO/SEOHead';
 import { FAQ, FAQItem } from '../UI/FAQ';
+import { formatBytes } from '../UI/format';
 
 const faqItems: FAQItem[] = [
   {
-    question: "Can I extract specific pages?",
-    answer: "Yes, you can select individual pages to extract into a new PDF, or split the entire document into separate single-page files."
+    question: 'Can I extract specific pages?',
+    answer: 'Yes, select the pages you want and use the extract action to keep them together in one PDF.',
   },
   {
-    question: "Is there a page limit?",
-    answer: "PDF Chef can handle large documents. However, for very large files (500+ pages), performance depends on your device's memory since processing is local."
+    question: 'Is there a page limit?',
+    answer: 'PDF Chef can handle large documents. For very large files, performance depends on your device memory because processing stays local.',
   },
   {
-    question: "Does it work on Mac and Windows?",
-    answer: "Yes, PDF Chef works in any modern web browser (Chrome, Edge, Firefox, Safari) on any operating system, including mobile."
-  }
+    question: 'Does it work on Mac and Windows?',
+    answer: 'Yes, PDF Chef works in modern browsers on desktop and mobile devices.',
+  },
 ];
+
+type SplitMode = 'pageCount' | 'maximumSize';
+type ActiveJob = 'split' | 'extract' | null;
+
+const idleStatus = (): ProcessingStatus => ({ isProcessing: false, progress: 0, message: '' });
 
 export const SplitPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [previews, setPreviews] = useState<string[]>([]);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
-  const [pagesPerSplit, setPagesPerSplit] = useState('2');
-  const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
+  const [splitMode, setSplitMode] = useState<SplitMode>('pageCount');
+  const [pagesPerSplit, setPagesPerSplit] = useState('1');
+  const [maximumSizeMb, setMaximumSizeMb] = useState('10');
+  const [status, setStatus] = useState<ProcessingStatus>(idleStatus);
+  const [activeJob, setActiveJob] = useState<ActiveJob>(null);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
-  const totalPages = previews.length || file?.pageCount || 0;
+  const [previewError, setPreviewError] = useState('');
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
+  const activeJobControllerRef = useRef<AbortController | null>(null);
+  const fileInspectionRef = useRef(false);
 
-  // Load previews when file changes
+  useEffect(() => () => {
+    activeJobControllerRef.current?.abort();
+  }, []);
+
+  const totalPages = file?.pageCount ?? previews.length;
+  const allPageIndices = useMemo(
+    () => Array.from({ length: totalPages }, (_, index) => index),
+    [totalPages],
+  );
+  const effectiveSelectedPages = useMemo(() => {
+    if (totalPages <= 0) return [];
+    if (selectedPages.length === 0) return allPageIndices;
+    return selectedPages.filter((index) => index >= 0 && index < totalPages);
+  }, [allPageIndices, selectedPages, totalPages]);
+  const selectedPageSet = useMemo(() => new Set(effectiveSelectedPages), [effectiveSelectedPages]);
+  const allPagesIncluded = totalPages > 0 && effectiveSelectedPages.length === totalPages;
+
   useEffect(() => {
     let cancelled = false;
 
-    if (file) {
-      setLoadingPreviews(true);
-      getPdfPagePreviews(file.file)
-        .then(urls => {
-          if (cancelled) {
-            revokeObjectUrls(urls);
-            return;
-          }
-          setPreviews(urls);
-          setLoadingPreviews(false);
-          setSelectedPages([]);
-        })
-        .catch(err => {
-          if (cancelled) return;
-          console.error("Failed to load previews", err);
-          setLoadingPreviews(false);
-        });
-    } else {
+    setSelectedPages([]);
+    setPreviewError('');
+    if (!file) {
+      setLoadingPreviews(false);
       setPreviews([]);
-      setSelectedPages([]);
+      return () => {
+        cancelled = true;
+      };
     }
+
+    setLoadingPreviews(true);
+    setPreviews([]);
+    getPdfPagePreviews(file.file)
+      .then((urls) => {
+        if (cancelled) {
+          revokeObjectUrls(urls);
+          return;
+        }
+        setPreviews(urls);
+        setLoadingPreviews(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to load previews', error);
+        setPreviewError(error instanceof Error && error.message ? error.message : 'Unable to generate page previews.');
+        setLoadingPreviews(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [file]);
+  }, [file, previewReloadKey]);
 
   useEffect(() => {
     return () => {
@@ -75,202 +116,463 @@ export const SplitPDF: React.FC = () => {
     };
   }, [previews]);
 
-  const handleFilesSelected = (files: File[]) => {
-    if (files.length === 0) return;
-    const f = files[0];
-    if (f.type !== 'application/pdf') return;
+  const handleFilesSelected = async (files: File[]) => {
+    if (
+      status.isProcessing ||
+      activeJobControllerRef.current ||
+      fileInspectionRef.current ||
+      files.length === 0
+    ) return;
+    const selected = files[0];
+    if (!isPdfFile(selected)) {
+      setStatus({ ...idleStatus(), error: 'Choose a PDF file.' });
+      return;
+    }
 
-    setFile({
-      id: uuidv4(),
-      file: f,
-      name: f.name,
-      size: f.size,
+    setStatus(idleStatus());
+    fileInspectionRef.current = true;
+    try {
+      const pageCount = await getPDFPageCount(selected);
+      if (pageCount < 1) {
+        setStatus({ ...idleStatus(), error: 'Selected PDF has no pages.' });
+        return;
+      }
+      setFile({
+        id: uuidv4(),
+        file: selected,
+        name: selected.name,
+        size: selected.size,
+        pageCount,
+      });
+    } catch (error) {
+      console.error(error);
+      setStatus({
+        ...idleStatus(),
+        error: error instanceof Error && error.message ? error.message : 'Unable to open this PDF.',
+      });
+    } finally {
+      fileInspectionRef.current = false;
+    }
+  };
+
+  const togglePage = (index: number) => {
+    if (status.isProcessing || totalPages <= 0) return;
+    setSelectedPages((current) => {
+      const explicitSelection = current.length === 0 ? allPageIndices : current;
+      if (explicitSelection.includes(index)) {
+        // A split must always include at least one page. Empty is reserved for the Android-compatible
+        // meaning of "all pages", so it cannot also represent "no pages".
+        if (explicitSelection.length === 1) return explicitSelection;
+        return explicitSelection.filter((pageIndex) => pageIndex !== index);
+      }
+      return [...explicitSelection, index].sort((left, right) => left - right);
     });
   };
 
-const togglePage = (index: number) => {
-    setSelectedPages(prev => 
-      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index].sort((a, b) => a - b)
-    );
+  const useAllPages = () => {
+    if (status.isProcessing) return;
+    setSelectedPages([]);
   };
 
-  const parsedPagesPerSplit = Math.max(1, Math.floor(Number(pagesPerSplit) || 1));
+  const parsedPagesPerSplit = Number(pagesPerSplit);
+  const parsedMaximumSizeMb = Number(maximumSizeMb);
+  const pagesPerSplitError = !pagesPerSplit
+    ? 'Enter pages per file.'
+    : !Number.isSafeInteger(parsedPagesPerSplit) || parsedPagesPerSplit < 1
+      ? 'Pages per file must be a positive whole number.'
+      : '';
+  const maximumSizeError = !maximumSizeMb
+    ? 'Enter a maximum file size in whole MB.'
+    : !Number.isSafeInteger(parsedMaximumSizeMb) || parsedMaximumSizeMb < 1
+      ? 'Maximum file size must be at least 1 MB.'
+      : '';
+  const settingsError = splitMode === 'pageCount' ? pagesPerSplitError : maximumSizeError;
+  const estimatedPartCount = !pagesPerSplitError && effectiveSelectedPages.length > 0
+    ? Math.ceil(effectiveSelectedPages.length / parsedPagesPerSplit)
+    : 0;
+  const canExport = Boolean(
+    file &&
+    totalPages > 0 &&
+    effectiveSelectedPages.length > 0 &&
+    !settingsError &&
+    !status.isProcessing,
+  );
+  const canExtractSelection = Boolean(
+    file &&
+    selectedPages.length > 0 &&
+    effectiveSelectedPages.length > 0 &&
+    effectiveSelectedPages.length < totalPages &&
+    !status.isProcessing,
+  );
 
-  const selectAll = () => {
-    if (totalPages > 0) {
-      setSelectedPages(Array.from({ length: totalPages }, (_, i) => i));
+  const deliverSplitResult = (result: SplitResult, sourceFile: PDFFile) => {
+    if (result.isArchive) {
+      downloadBlob(result.blob, `${androidExportDirectoryName(sourceFile.name, 'split_pdfs')}.zip`);
+      return;
     }
+    downloadBlob(result.blob, androidExportFileName('split', sourceFile.name, 'pdf'), 'application/pdf');
   };
 
-  const deselectAll = () => setSelectedPages([]);
-
-  const handleSplitAll = async () => {
-    if (!file) return;
-    setStatus({ isProcessing: true, progress: 10, message: 'Splitting into individual files...' });
-    try {
-      const zipBlob = await splitPDF(file.file);
-      downloadBlob(zipBlob, `${file.name.replace('.pdf', '')}-all-pages.zip`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
-    } catch (error) {
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Split failed' });
-    }
+  const reportFailure = (error: unknown, fallback: string, controller: AbortController) => {
+    if (activeJobControllerRef.current !== controller) return;
+    console.error(error);
+    setActiveJob(null);
+    setStatus({
+      isProcessing: false,
+      progress: 0,
+      message: '',
+      error: error instanceof Error && error.message ? error.message : fallback,
+    });
   };
 
-  const handleSplitByGroups = async () => {
-    if (!file) return;
-    setStatus({ isProcessing: true, progress: 10, message: `Splitting ${parsedPagesPerSplit} page(s) per file...` });
+  const cancelJob = () => {
+    const controller = activeJobControllerRef.current;
+    if (!controller || controller.signal.aborted) return;
+    controller.abort();
+    setStatus((current) => ({
+      ...current,
+      isProcessing: true,
+      message: activeJob === 'extract' ? 'Cancelling extraction...' : 'Cancelling split...',
+    }));
+  };
+
+  const handleExport = async () => {
+    if (!file || !canExport || activeJobControllerRef.current) return;
+    const sourceFile = file;
+    const pageSelection = selectedPages.length === 0 ? [] : [...effectiveSelectedPages];
+    const mode = splitMode;
+    const controller = new AbortController();
+    activeJobControllerRef.current = controller;
+    setActiveJob('split');
+    setStatus({
+      isProcessing: true,
+      progress: 5,
+      message: mode === 'pageCount'
+        ? `Splitting ${parsedPagesPerSplit} page${parsedPagesPerSplit === 1 ? '' : 's'} per file...`
+        : `Measuring parts up to ${parsedMaximumSizeMb} MB...`,
+    });
+
     try {
-      const zipBlob = await splitPDFByPagesPerFile(file.file, parsedPagesPerSplit, selectedPages);
-      downloadBlob(
-        zipBlob,
-        `${file.name.replace('.pdf', '')}-${parsedPagesPerSplit}-pages-per-file.zip`,
-      );
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      const result = mode === 'pageCount'
+        ? await splitPDFByPagesPerFile(
+          sourceFile.file,
+          parsedPagesPerSplit,
+          pageSelection,
+          (current, total) => {
+            if (activeJobControllerRef.current !== controller || controller.signal.aborted) return;
+            setStatus({
+              isProcessing: true,
+              progress: Math.max(5, Math.round((current / Math.max(1, total)) * 95)),
+              message: `Writing part ${current} of ${total}...`,
+            });
+          },
+          controller.signal,
+        )
+        : await splitPDFByMaximumSize(
+          sourceFile.file,
+          parsedMaximumSizeMb,
+          pageSelection,
+          (current, total) => {
+            if (activeJobControllerRef.current !== controller || controller.signal.aborted) return;
+            setStatus({
+              isProcessing: true,
+              progress: Math.max(5, Math.round((current / Math.max(1, total)) * 95)),
+              message: `Measuring page ${current} of ${total}...`,
+            });
+          },
+          controller.signal,
+        );
+
+      if (controller.signal.aborted || activeJobControllerRef.current !== controller) return;
+      deliverSplitResult(result, sourceFile);
+      setActiveJob(null);
+      setStatus({
+        isProcessing: false,
+        progress: 100,
+        message: result.partCount === 1 ? 'One split PDF is ready.' : `${result.partCount} split PDFs are ready.`,
+      });
     } catch (error) {
-      console.error(error);
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Grouped split failed' });
+      if (activeJobControllerRef.current !== controller) return;
+      if (controller.signal.aborted) {
+        setActiveJob(null);
+        setStatus({ ...idleStatus(), message: 'Split cancelled.' });
+      } else {
+        reportFailure(error, 'Split failed.', controller);
+      }
+    } finally {
+      if (activeJobControllerRef.current === controller) {
+        activeJobControllerRef.current = null;
+      }
     }
   };
 
   const handleExtractSelected = async () => {
-    if (!file || selectedPages.length === 0) return;
-    setStatus({ isProcessing: true, progress: 10, message: 'Extracting pages...' });
+    if (!file || !canExtractSelection || activeJobControllerRef.current) return;
+    const sourceFile = file;
+    const pagesToExtract = [...effectiveSelectedPages];
+    const controller = new AbortController();
+    activeJobControllerRef.current = controller;
+    setActiveJob('extract');
+    setStatus({ isProcessing: true, progress: 15, message: 'Extracting selected pages...' });
+
     try {
-      const pdfBytes = await extractPages(file.file, selectedPages);
-      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `${file.name.replace('.pdf', '')}-extracted.pdf`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      const pdfBytes = await extractPages(
+        sourceFile.file,
+        pagesToExtract,
+        'Pages to extract',
+        controller.signal,
+      );
+      if (controller.signal.aborted || activeJobControllerRef.current !== controller) return;
+      downloadBlob(
+        new Blob([pdfBytes], { type: 'application/pdf' }),
+        androidExportFileName('extract_pages', sourceFile.name, 'pdf'),
+      );
+      setActiveJob(null);
+      setStatus({
+        isProcessing: false,
+        progress: 100,
+        message: `Extracted ${pagesToExtract.length} ${pagesToExtract.length === 1 ? 'page' : 'pages'}.`,
+      });
     } catch (error) {
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Extraction failed' });
+      if (activeJobControllerRef.current !== controller) return;
+      if (controller.signal.aborted) {
+        setActiveJob(null);
+        setStatus({ ...idleStatus(), message: 'Extraction cancelled.' });
+      } else {
+        reportFailure(error, 'Extraction failed.', controller);
+      }
+    } finally {
+      if (activeJobControllerRef.current === controller) {
+        activeJobControllerRef.current = null;
+      }
     }
   };
 
+  const changeFile = () => {
+    if (status.isProcessing) return;
+    setActiveJob(null);
+    setFile(null);
+    setStatus(idleStatus());
+  };
+
+  const footerSummary = splitMode === 'pageCount'
+    ? estimatedPartCount === 1
+      ? 'Creates one PDF from the included pages.'
+      : estimatedPartCount > 1
+        ? `Creates ${estimatedPartCount} PDFs, delivered together in one ZIP.`
+        : 'Choose a valid number of pages per file.'
+    : maximumSizeError
+      ? maximumSizeError
+      : `Each output PDF will be no larger than ${parsedMaximumSizeMb} MB.`;
+
   return (
-    <div className="max-w-6xl mx-auto py-12 px-4">
-      <SEOHead 
+    <ToolShell width="full" centered={!file}>
+      <SEOHead
         title="Split PDF Pages - Extract & Separate Online | PDF Chef"
         description="Split PDF files or extract specific pages securely in your browser. No server uploads. Free offline PDF splitter."
       />
 
-      <div className="mb-8">
-         <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
-         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Split & Extract PDF</h1>
-         <p className="text-slate-500 dark:text-slate-400">Extract specific pages or split the entire document.</p>
-      </div>
+      <ToolHeader title="Split PDF" />
 
       <AnimatePresence mode="wait">
         {!file ? (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-3xl mx-auto">
-             <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to split" />
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mx-auto max-w-3xl"
+          >
+            <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Choose a PDF to split" />
           </motion.div>
         ) : (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.98 }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.99 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col gap-6"
+            className="flex flex-col gap-3"
           >
-            {/* Header / Toolbar */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-20 z-10">
-              <div className="flex items-center gap-4 w-full sm:w-auto">
-                <div className="p-2 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-lg">
-                  <FileText size={24} />
+            <ToolPanel className="flex flex-col gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[var(--radius-control)] bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]">
+                  <FileText aria-hidden size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="chef-filename text-sm font-semibold text-[var(--text-primary)]">{file.name}</h2>
+                  <p className="type-caption text-[var(--text-tertiary)]">
+                    {totalPages} {totalPages === 1 ? 'page' : 'pages'} · {formatBytes(file.size)}
+                  </p>
                 </div>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{file.name}</h3>
-                  <div className="text-xs text-slate-500">{totalPages} pages</div>
+                <button
+                  type="button"
+                  onClick={changeFile}
+                  disabled={status.isProcessing}
+                  className="chef-pressable chef-hit-y shrink-0 rounded-[var(--radius-pill)] px-2.5 py-1.5 text-sm font-semibold text-[var(--accent-text)] hover:bg-[var(--accent-quiet)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  Change
+                </button>
+              </div>
+              <ToolSelectionBar
+                summary={allPagesIncluded
+                  ? `All ${totalPages} pages included`
+                  : `${effectiveSelectedPages.length} of ${totalPages} pages included`}
+                actions={[
+                  {
+                    key: 'all-pages',
+                    label: 'Use all pages',
+                    hidden: allPagesIncluded,
+                    disabled: status.isProcessing,
+                    onClick: useAllPages,
+                  },
+                ]}
+              />
+            </ToolPanel>
+
+            {/* A two-choice method is a strip, not two padded cards with a
+                sub-line each: the input below already names what the number
+                means, so the hints were saying it twice. */}
+            <ToolPanel className="flex flex-col gap-2.5">
+              <SegmentedControl
+                label="Split method"
+                value={splitMode}
+                options={[
+                  { value: 'pageCount', label: 'Pages per file' },
+                  { value: 'maximumSize', label: 'Max file size' },
+                ]}
+                onChange={(next) => { if (!status.isProcessing) setSplitMode(next as SplitMode); }}
+              />
+              {splitMode === 'pageCount' ? (
+                <label className="block">
+                  <span className="type-footnote font-semibold text-[var(--text-secondary)]">Pages per output PDF</span>
+                  <input
+                    value={pagesPerSplit}
+                    onChange={(event) => setPagesPerSplit(event.target.value.replace(/[^\d]/g, ''))}
+                    disabled={status.isProcessing}
+                    className="chef-field mt-1 h-10 w-full px-3 text-sm disabled:opacity-55"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                  />
+                </label>
+              ) : (
+                <label className="block">
+                  <span className="type-footnote font-semibold text-[var(--text-secondary)]">Maximum file size (MB)</span>
+                  <input
+                    value={maximumSizeMb}
+                    onChange={(event) => setMaximumSizeMb(event.target.value.replace(/[^\d]/g, ''))}
+                    disabled={status.isProcessing}
+                    className="chef-field mt-1 h-10 w-full px-3 text-sm disabled:opacity-55"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                  />
+                  {/* Kept: a single page can exceed the limit on its own, and the
+                      only way out is another tool. */}
+                  <span className="type-caption mt-1 block text-[var(--text-tertiary)]">
+                    If one page is larger than the limit on its own, compress it first.
+                  </span>
+                </label>
+              )}
+              {settingsError && <p role="alert" className="type-footnote font-medium text-[var(--status-caution-text)]">{settingsError}</p>}
+            </ToolPanel>
+
+            {status.isProcessing ? (
+              <div role="status" aria-live="polite" className="rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3">
+                <div className="flex items-center gap-3">
+                  <Loader2 aria-hidden className="shrink-0 animate-spin text-[var(--accent-text)]" size={22} />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-[var(--text-primary)]">
+                      {activeJob === 'extract' ? 'Extracting pages' : 'Processing your PDF'}
+                    </p>
+                    <p className="truncate text-sm text-[var(--text-secondary)]">{status.message}</p>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums text-[var(--text-secondary)]">{status.progress}%</span>
                 </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+                  <div className="h-full rounded-full bg-[var(--accent-rest)] transition-[width]" style={{ width: `${status.progress}%` }} />
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelJob}
+                  disabled={activeJobControllerRef.current?.signal.aborted}
+                  className="chef-pressable chef-target mt-2 w-full rounded-[var(--radius-control)] border border-[var(--border-strong)] px-4 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--accent-rest)] disabled:opacity-55"
+                >
+                  {activeJobControllerRef.current?.signal.aborted ? 'Cancelling...' : 'Cancel'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <p className="type-footnote text-[var(--text-secondary)]">{footerSummary}</p>
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={!canExport}
+                  className="chef-pressable chef-target flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--accent-rest)] px-4 text-sm font-semibold text-[var(--text-on-accent)] transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Scissors aria-hidden size={18} />
+                  <span>Export split PDFs</span>
+                </button>
+              </div>
+            )}
+            <section aria-labelledby="split-pages-heading" className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="split-pages-heading" className="text-sm font-semibold text-[var(--text-primary)]">Pages to include</h2>
+                <span className="type-footnote shrink-0 text-[var(--text-secondary)]">
+                  {effectiveSelectedPages.length} selected
+                </span>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                 <button onClick={selectAll} disabled={loadingPreviews || totalPages === 0} className="px-3 py-2 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                   <CheckSquare size={14} /> Select All
-                 </button>
-                 <button onClick={deselectAll} disabled={loadingPreviews || selectedPages.length === 0} className="px-3 py-2 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                   <Square size={14} /> Deselect
-                 </button>
-                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2" />
-                 <button onClick={() => setFile(null)} className="text-rose-500 hover:text-rose-600 text-sm font-medium px-2">
-                   Change File
-                 </button>
-              </div>
-            </div>
+              {loadingPreviews ? (
+                <div role="status" className="flex flex-col items-center justify-center gap-2 py-6 text-[var(--text-tertiary)]">
+                  <Loader2 aria-hidden className="animate-spin" size={24} />
+                  <p className="text-sm">Generating page previews...</p>
+                </div>
+              ) : previewError ? (
+                <div role="status" className="flex flex-col items-center justify-center px-4 py-6 text-center">
+                  <p className="font-semibold text-[var(--text-primary)]">Page previews are unavailable</p>
+                  <p className="mt-1 max-w-measure text-sm text-[var(--text-secondary)]">
+                    You can still split all pages, or retry preview generation. {previewError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewReloadKey((current) => current + 1)}
+                    className="chef-pressable chef-target mt-3 flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-strong)] px-4 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--accent-rest)]"
+                  >
+                    <RefreshCw aria-hidden size={17} /> Retry previews
+                  </button>
+                </div>
+              ) : previews.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+                  {previews.map((url, index) => (
+                    <PageThumbnail
+                      key={url}
+                      pageIndex={index}
+                      imageUrl={url}
+                      isSelected={selectedPageSet.has(index)}
+                      onToggle={() => togglePage(index)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="py-4 text-center text-sm text-[var(--text-secondary)]">No page previews are available.</p>
+              )}
+            </section>
 
-            {/* Visual Grid */}
-            <div className="bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-6 min-h-[400px]">
-               {loadingPreviews ? (
-                 <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                   <Loader2 className="animate-spin mb-4" size={32} />
-                   <p>Generating page previews...</p>
-                 </div>
-               ) : (
-                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                   {previews.map((url, index) => (
-                     <PageThumbnail
-                       key={index}
-                       pageIndex={index}
-                       imageUrl={url}
-                       isSelected={selectedPages.includes(index)}
-                       onToggle={() => togglePage(index)}
-                     />
-                   ))}
-                 </div>
-               )}
-            </div>
+            {canExtractSelection && (
+              <button
+                type="button"
+                onClick={handleExtractSelected}
+                className="chef-pressable chef-target flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-raised)] px-4 text-sm font-semibold text-[var(--accent-text)] hover:border-[var(--accent-rest)]"
+              >
+                <Download aria-hidden size={18} />
+                Extract {effectiveSelectedPages.length} {effectiveSelectedPages.length === 1 ? 'page' : 'pages'} as one PDF
+              </button>
+            )}
 
-            {/* Actions Footer */}
-            <div className="fixed bottom-3 left-0 right-0 flex justify-center pointer-events-none z-20 px-2">
-              <div className="w-full max-w-5xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex flex-wrap items-center justify-center gap-3 pointer-events-auto sm:scale-100 transform transition-transform max-h-[45vh] overflow-y-auto">
-                 <button
-                   onClick={handleExtractSelected}
-                   disabled={loadingPreviews || selectedPages.length === 0 || status.isProcessing}
-                   className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-slate-500"
-                 >
-                   {status.isProcessing && selectedPages.length > 0 ? <Loader2 className="animate-spin" /> : <Download size={20} />}
-                   <span>Extract {selectedPages.length} Pages</span>
-                 </button>
-                 
-                 <div className="text-slate-300 dark:text-slate-700">or</div>
-
-                 <button
-                   onClick={handleSplitAll}
-                   disabled={loadingPreviews || status.isProcessing}
-                   className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                 >
-                   {status.isProcessing && selectedPages.length === 0 ? <Loader2 className="animate-spin" /> : <Scissors size={20} />}
-                   <span>Split All to ZIP</span>
-                 </button>
-
-                 <div className="text-slate-300 dark:text-slate-700">or</div>
-
-                 <div className="flex items-center gap-2">
-                   <input
-                     value={pagesPerSplit}
-                     onChange={(event) => setPagesPerSplit(event.target.value.replace(/[^\d]/g, ''))}
-                     className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                     inputMode="numeric"
-                     aria-label="Pages per split file"
-                   />
-                   <button
-                     onClick={handleSplitByGroups}
-                     disabled={loadingPreviews || status.isProcessing}
-                     className="px-4 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                   >
-                     {status.isProcessing && selectedPages.length > 0 ? <Loader2 className="animate-spin" /> : <Scissors size={18} />}
-                     <span>Split by N Pages</span>
-                   </button>
-                 </div>
-              </div>
-            </div>
-            
-            {/* Spacer for fixed footer */}
-            <div className="h-24" />
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="mt-12">
-        <FAQ items={faqItems} />
-      </div>
+      <FAQ items={faqItems} />
       <StatusToast status={status} />
-    </div>
+    </ToolShell>
   );
 };

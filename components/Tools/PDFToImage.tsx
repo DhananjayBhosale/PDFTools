@@ -1,25 +1,94 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
 import {
   extractEmbeddedImagesFromPDF,
   loadPDFDocument,
   renderPageAsImage,
+  renderPdfPageToBlob,
   type EmbeddedPdfImageAsset,
   type ImageExportConfig,
 } from '../../services/pdfBrowser';
-import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
+import { downloadBlob, isPdfFile, revokeObjectUrls } from '../../services/pdfShared';
+import {
+  DEFAULT_IMAGE_EXPORT_QUALITY,
+  DEFAULT_IMAGE_EXPORT_SCALE,
+  MAX_IMAGE_EXPORT_SCALE,
+  MIN_IMAGE_EXPORT_QUALITY,
+  MIN_IMAGE_EXPORT_SCALE,
+  androidExportDirectoryName,
+  androidExportFileName,
+  imageExportExtension,
+  imageExportPageFileName,
+  imageExportRenderScale,
+  resolveOptionalPageSelection,
+} from '../../services/androidParity';
 import { Download, FileImage, ImageIcon, Loader2, Settings2, Undo2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import JSZip from 'jszip';
 import { ZoomControls } from '../UI/ZoomControls';
-import { ChefSlider } from '../UI/ChefSlider';
+import { ChefSliderField } from '../UI/ChefSlider';
 import { useZoom } from '../../hooks/useZoom';
 import { SEOHead } from '../SEO/SEOHead';
+import { StatusToast } from '../UI/StatusToast';
+import { ToolHeader, ToolShell } from '../UI/ToolLayout';
+import { tools } from './toolCatalog';
+import { ToolIdentity } from './ToolIdentity';
+import { useImmersiveWorkspace } from '../Layout/AppShell';
+
+const PDF_TO_IMAGE_TOOL = tools.find((tool) => tool.path === '/pdf-to-jpg');
 
 type ExportMode = 'pages' | 'embedded-images';
+
+const PageImagePreview: React.FC<{
+  pdfDoc: any;
+  scale: number;
+}> = ({ pdfDoc, scale }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    let active = true;
+    let renderTask: any = null;
+    void (async () => {
+      const page = await pdfDoc.getPage(1);
+      if (!active) return;
+      const viewport = page.getViewport({ scale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      renderTask = page.render({ canvasContext: context, viewport });
+      await renderTask.promise;
+    })().catch((error) => {
+      if (active && error?.name !== 'RenderingCancelledException') console.error(error);
+    });
+    return () => {
+      active = false;
+      renderTask?.cancel?.();
+    };
+  }, [pdfDoc, scale]);
+
+  return (
+    <figure className="flex max-w-full flex-col items-center gap-1.5">
+      <canvas
+        ref={canvasRef}
+        role="img"
+        aria-label="Page 1 preview"
+        className="block max-h-[64dvh] max-w-full select-none rounded-[2px] border border-[var(--border-strong)] bg-white object-contain shadow-[var(--elevation-panel)] md:max-h-[78vh]"
+      />
+      <figcaption className="type-caption rounded-[var(--radius-pill)] bg-[var(--surface-raised)] px-2 py-0.5 text-[var(--text-secondary)]">
+        Page 1 preview
+      </figcaption>
+    </figure>
+  );
+};
 
 const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -29,18 +98,53 @@ const formatBytes = (bytes: number) => {
 
 const getBaseName = (filename: string) => filename.replace(/\.pdf$/i, '');
 
+/** Comma and range syntax, as in the app's `pages=1,3-5` option token. */
+const parsePageRangeInput = (raw: string, totalPages: number): number[] => {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+
+  const selected = new Set<number>();
+  for (const token of trimmed.split(',')) {
+    const part = token.trim();
+    if (!part) continue;
+    if (part.includes('-')) {
+      const [startRaw, endRaw] = part.split('-', 2);
+      const start = Number(startRaw.trim());
+      const end = Number(endRaw.trim());
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1 || start > end) {
+        throw new Error(`Invalid page range: ${part}`);
+      }
+      for (let page = start; page <= end; page += 1) selected.add(page);
+    } else {
+      const page = Number(part);
+      if (!Number.isInteger(page) || page < 1) throw new Error(`Invalid page number: ${part}`);
+      selected.add(page);
+    }
+  }
+
+  return [...selected].sort((left, right) => left - right).map((page) => page - 1);
+};
+
 export const PDFToImage: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
 
-  const [config, setConfig] = useState<ImageExportConfig>({ format: 'image/jpeg', quality: 0.8, scale: 2 });
+  // `PdfTool.PDF_TO_JPG.defaultOptionValue` is "format=jpg;quality=85;scale=1.2".
+  const [config, setConfig] = useState<ImageExportConfig>({
+    format: 'image/jpeg',
+    quality: DEFAULT_IMAGE_EXPORT_QUALITY / 100,
+    scale: DEFAULT_IMAGE_EXPORT_SCALE,
+  });
+  /** The app's `pages=` token; empty means every page. */
+  const [pageSelection, setPageSelection] = useState('');
   const [preview, setPreview] = useState<{ objectUrl: string; blob: Blob; width: number; height: number; sizeBytes: number } | null>(null);
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
   const [isScanningImages, setIsScanningImages] = useState(false);
   const [embeddedImages, setEmbeddedImages] = useState<EmbeddedPdfImageAsset[]>([]);
   const [selectedEmbeddedIds, setSelectedEmbeddedIds] = useState<string[]>([]);
   const [exportMode, setExportMode] = useState<ExportMode>('pages');
+  const [largeJobConfirmed, setLargeJobConfirmed] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const embeddedImagesRef = useRef<EmbeddedPdfImageAsset[]>([]);
@@ -99,7 +203,7 @@ export const PDFToImage: React.FC = () => {
   const handleFilesSelected = async (files: File[]) => {
     if (files.length === 0) return;
     const selectedFile = files[0];
-    if (selectedFile.type !== 'application/pdf') return;
+    if (!isPdfFile(selectedFile)) return;
 
     try {
       const doc = await loadPDFDocument(selectedFile);
@@ -126,12 +230,25 @@ export const PDFToImage: React.FC = () => {
     setIsGeneratingPreview(true);
     try {
       const result = await renderPageAsImage(pdfDoc, 0, config);
+      let previewResult = result;
+      if (Capacitor.isNativePlatform()) {
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onerror = () => reject(new Error('Preview image could not be opened.'));
+          reader.onload = () => typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Preview image could not be opened.'));
+          reader.readAsDataURL(result.blob);
+        });
+        URL.revokeObjectURL(result.objectUrl);
+        previewResult = { ...result, objectUrl: dataUrl };
+      }
       setPreview((previous) => {
         if (previous?.objectUrl && previous.objectUrl.startsWith('blob:')) {
           URL.revokeObjectURL(previous.objectUrl);
         }
-        previewUrlRef.current = result.objectUrl;
-        return result;
+        previewUrlRef.current = previewResult.objectUrl;
+        return previewResult;
       });
     } catch (error) {
       console.error(error);
@@ -171,32 +288,107 @@ export const PDFToImage: React.FC = () => {
     if (zoom === 1) setPan({ x: 0, y: 0 });
   }, [zoom]);
 
+  const resolvedPageSelection = useMemo<number[] | null>(() => {
+    if (!pdfDoc) return [];
+    try {
+      return resolveOptionalPageSelection(
+        parsePageRangeInput(pageSelection, pdfDoc.numPages).map((index) => index + 1),
+        pdfDoc.numPages,
+        'Pages to convert',
+      );
+    } catch {
+      return null;
+    }
+  }, [pageSelection, pdfDoc]);
+
+  const exportPageCount = resolvedPageSelection?.length ?? 0;
+  const estimatedWorkingMemoryBytes = useMemo(() => {
+    if (!file || !preview || exportPageCount === 0) return 0;
+    // One decoded page and one render canvas are live together, while encoded images
+    // accumulate in the ZIP. This is a warning estimate, not a promised measurement.
+    const activePageBytes = preview.width * preview.height * 4 * 2;
+    const accumulatedOutputBytes = preview.sizeBytes * exportPageCount * 1.5;
+    return Math.round(file.size + activePageBytes + accumulatedOutputBytes);
+  }, [exportPageCount, file, preview]);
+  const requiresLargeJobConfirmation = exportPageCount > 50
+    || estimatedWorkingMemoryBytes >= 256 * 1024 * 1024;
+  const estimatedWorkingMemoryMb = Math.max(1, Math.ceil(estimatedWorkingMemoryBytes / (1024 * 1024)));
+
+  useEffect(() => {
+    setLargeJobConfirmed(false);
+  }, [config.format, config.quality, config.scale, file?.id, pageSelection]);
+
+  /**
+   * `PdfToJpgToolProcessor` in the Android app: an empty page selection means every page, a single
+   * exported page is delivered as one image rather than a one-entry archive, and multi-page names
+   * are zero padded so a listing sorts the way the document reads.
+   */
   const handlePageExport = async () => {
     if (!pdfDoc || !file) return;
+    if (resolvedPageSelection === null) {
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Check the page range. Use values such as 1,3-5.' });
+      return;
+    }
+    if (requiresLargeJobConfirmation && !largeJobConfirmed) {
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: 'Review the large-export memory warning before continuing.',
+      });
+      return;
+    }
     setStatus({ isProcessing: true, progress: 0, message: 'Starting export...' });
 
     try {
-      const zip = new JSZip();
-      const numPages = pdfDoc.numPages;
-      const extension = config.format === 'image/png' ? 'png' : config.format === 'image/webp' ? 'webp' : 'jpg';
+      const extension = imageExportExtension(config.format);
+      const exportIndices = resolvedPageSelection;
+      const highestPageIndex = exportIndices[exportIndices.length - 1];
 
-      for (let pageIndex = 0; pageIndex < numPages; pageIndex += 1) {
+      const renderPage = async (pageIndex: number) => {
+        const page = await pdfDoc.getPage(pageIndex + 1);
+        const viewport = page.getViewport({ scale: 1 });
+        return renderPdfPageToBlob(page, {
+          ...config,
+          scale: imageExportRenderScale(viewport.width, viewport.height, config.scale),
+        });
+      };
+
+      if (exportIndices.length === 1) {
+        setStatus({ isProcessing: true, progress: 50, message: `Rendering page ${exportIndices[0] + 1}...` });
+        const { blob } = await renderPage(exportIndices[0]);
+        downloadBlob(
+          blob,
+          androidExportFileName('pdf_to_jpg', file.name, extension),
+          config.format,
+        );
+        setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+        return;
+      }
+
+      const zip = new JSZip();
+      for (let index = 0; index < exportIndices.length; index += 1) {
+        const pageIndex = exportIndices[index];
         setStatus({
           isProcessing: true,
-          progress: (pageIndex / numPages) * 100,
-          message: `Rendering page ${pageIndex + 1}/${numPages}...`,
+          progress: (index / exportIndices.length) * 100,
+          message: `Rendering page ${pageIndex + 1} (${index + 1}/${exportIndices.length})...`,
         });
-        const { blob } = await renderPageAsImage(pdfDoc, pageIndex, config);
-        zip.file(`Page-${pageIndex + 1}.${extension}`, await blob.arrayBuffer());
+        const { blob } = await renderPage(pageIndex);
+        zip.file(imageExportPageFileName(pageIndex, extension, highestPageIndex), blob);
       }
 
       setStatus({ isProcessing: true, progress: 100, message: 'Zipping...' });
       const content = await zip.generateAsync({ type: 'blob' });
-      downloadBlob(content, `${getBaseName(file.name)}-images.zip`);
+      downloadBlob(content, `${androidExportDirectoryName(file.name, 'images')}.zip`);
       setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
     } catch (error) {
-      console.error(error);
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Export failed' });
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: error instanceof Error ? error.message : 'Export failed',
+      });
     }
   };
 
@@ -229,7 +421,7 @@ export const PDFToImage: React.FC = () => {
         });
         zip.file(
           `embedded-image-${String(index + 1).padStart(2, '0')}-pages-${image.pageNumbers.join('-')}.png`,
-          await image.blob.arrayBuffer(),
+          image.blob,
         );
       }
 
@@ -284,50 +476,84 @@ export const PDFToImage: React.FC = () => {
     void handlePageExport();
   };
 
+  // The export workspace earns the whole screen; the drop zone that precedes it
+  // does not. Until a PDF is chosen this is an ordinary tool screen, with the
+  // shell's Tools navigation above it and the tab bar below it.
+  useImmersiveWorkspace(Boolean(file));
+
+  const pageActionLabel = resolvedPageSelection === null
+    ? 'Check page range'
+    : `Convert ${exportPageCount} ${exportPageCount === 1 ? 'Page' : 'Pages'}`;
   const primaryActionLabel = exportMode === 'embedded-images'
     ? `Download Selected${selectedEmbeddedImages.length > 0 ? ` (${selectedEmbeddedImages.length})` : ''}`
-    : `Convert ${pdfDoc?.numPages ?? 0} Pages`;
+    : pageActionLabel;
+
+  if (!file) {
+    return (
+      <ToolShell centered>
+        <SEOHead
+          title="PDF to JPG Converter - Export Pages to Images | PDF Chef"
+          description="Convert PDF pages to high-quality JPG or PNG images. Extract embedded images locally. Secure and fast."
+        />
+        <ToolHeader title="PDF to Image" />
+        <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Choose a PDF to convert" />
+        <StatusToast status={status} />
+      </ToolShell>
+    );
+  }
 
   return (
-    <div className="flex h-[100dvh] min-h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div className="chef-safe-bottom flex h-[100dvh] min-h-[100dvh] w-full flex-col overflow-hidden bg-[var(--surface-canvas)]">
       <SEOHead
         title="PDF to JPG Converter - Export Pages to Images | PDF Chef"
         description="Convert PDF pages to high-quality JPG or PNG images. Extract embedded images locally. Secure and fast."
       />
 
-      <div className="z-30 flex min-h-16 flex-shrink-0 flex-col items-start justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:px-6 sm:py-0">
+      {/* An immersive route gets no shell chrome, so it consumes the status-bar
+          inset itself rather than painting under the clock. */}
+      <div className="chef-safe-top z-30 flex min-h-16 flex-shrink-0 flex-col items-start justify-between gap-2 border-b border-[var(--border-hairline)] bg-[var(--surface-raised)] px-3 py-2 sm:flex-row sm:items-center sm:px-6 sm:py-0">
         <div className="flex items-center gap-4">
-          <Link to="/" className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800">
-            <Undo2 size={20} />
+          {/* This route has no app nav bar, so this is the only way out. It
+              needs a name and a full target, not a bare glyph. */}
+          <Link
+            to="/"
+            aria-label="Back to tools"
+            className="chef-target grid place-items-center rounded-full text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-sunken)]"
+          >
+            <Undo2 aria-hidden size={20} />
           </Link>
-          <div>
-            <h1 className="text-lg font-bold leading-none text-slate-900 dark:text-white">PDF to Image</h1>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              {exportMode === 'embedded-images' ? 'Extract Embedded Images' : 'Export Pages'}
-            </p>
+          <div className="flex items-center gap-2">
+            {PDF_TO_IMAGE_TOOL && (
+              <ToolIdentity tool={PDF_TO_IMAGE_TOOL} size={20} assetSize={30} assetClassName="h-[30px] w-[30px] shrink-0 object-contain" />
+            )}
+            {/* The mode is stated by the Mode control and by the export
+                button's own label; it does not need a third voice here. */}
+            <h1 className="text-lg font-bold leading-none text-[var(--text-primary)]">PDF to Image</h1>
           </div>
         </div>
 
         {file && (
           <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:gap-3">
             {hasDetectedEmbeddedImages && (
-              <div className="hidden rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 sm:block">
+              <div className="type-caption hidden rounded-full bg-[var(--status-success-quiet)] px-3 py-1 uppercase text-[var(--status-success-text)] sm:block">
                 {embeddedImages.length} images detected
               </div>
             )}
             <button
               onClick={handleStartOver}
-              className="rounded-lg px-3 py-2 text-xs font-bold text-rose-500 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/30 sm:px-4 sm:text-sm"
+              className="chef-target chef-pressable rounded-[var(--radius-control)] px-3 text-xs font-bold text-[var(--status-danger-text)] transition-colors hover:bg-[var(--status-danger-quiet)] sm:px-4 sm:text-sm"
             >
-              Start Over
+              Start over
             </button>
             <button
               onClick={handlePrimaryAction}
               disabled={
                 status.isProcessing ||
-                (exportMode === 'embedded-images' ? selectedEmbeddedImages.length === 0 : !preview)
+                (exportMode === 'embedded-images'
+                  ? selectedEmbeddedImages.length === 0
+                  : !preview || resolvedPageSelection === null || (requiresLargeJobConfirmation && !largeJobConfirmed))
               }
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-colors hover:bg-blue-700 disabled:opacity-50 sm:px-6 sm:text-sm"
+              className="chef-target chef-pressable flex items-center gap-2 rounded-[var(--radius-control)] bg-[var(--accent-rest)] px-4 text-xs font-bold text-[var(--text-on-accent)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-55 sm:px-6 sm:text-sm"
             >
               {status.isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
               <span>{primaryActionLabel}</span>
@@ -337,30 +563,23 @@ export const PDFToImage: React.FC = () => {
       </div>
 
       <AnimatePresence mode="wait">
-        {!file ? (
-          <div className="flex flex-1 items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-xl">
-              <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to convert to images" />
-            </motion.div>
-          </div>
-        ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4 md:flex-row">
-            <div className="custom-scrollbar flex h-full w-full flex-shrink-0 flex-col gap-3 overflow-y-auto md:w-80 md:max-w-80 sm:gap-4">
-              <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 font-bold text-slate-900 dark:border-slate-800 dark:text-white">
-                  <Settings2 size={18} className="text-blue-500" /> Export Settings
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="chef-gesture-clear flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4 md:flex-row">
+            <div className="custom-scrollbar flex max-h-[46dvh] w-full flex-shrink-0 flex-col gap-3 overflow-y-auto md:h-full md:max-h-none md:w-80 md:max-w-80">
+              <div className="space-y-2 rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3">
+                <div className="flex items-center gap-2 border-b border-[var(--border-hairline)] pb-2 text-sm font-bold text-[var(--text-primary)]">
+                  <Settings2 aria-hidden size={18} className="text-[var(--accent-text)]" /> Export settings
                 </div>
 
                 {hasImageModeOption && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Mode</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Mode</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => setExportMode('pages')}
-                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                        className={`chef-pressable chef-hit-y grid min-h-11 place-items-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors ${
                           exportMode === 'pages'
-                            ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/20'
-                            : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+                            ? 'border-[var(--accent-rest)] bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]'
+                            : 'border-[var(--border-strong)] text-[var(--text-primary)] hover:border-[var(--accent-rest)]'
                         }`}
                       >
                         Pages
@@ -368,11 +587,11 @@ export const PDFToImage: React.FC = () => {
                       <button
                         onClick={() => hasDetectedEmbeddedImages && setExportMode('embedded-images')}
                         disabled={!hasDetectedEmbeddedImages}
-                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                        className={`chef-pressable chef-hit-y grid min-h-11 place-items-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors ${
                           exportMode === 'embedded-images'
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20'
-                            : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
-                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                            ? 'border-[var(--accent-rest)] bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]'
+                            : 'border-[var(--border-strong)] text-[var(--text-primary)] hover:border-[var(--accent-rest)]'
+                        } disabled:cursor-not-allowed disabled:opacity-55`}
                       >
                         {isScanningImages ? 'Scanning…' : `Images${hasDetectedEmbeddedImages ? ` (${embeddedImages.length})` : ''}`}
                       </button>
@@ -382,17 +601,17 @@ export const PDFToImage: React.FC = () => {
 
                 {exportMode === 'pages' ? (
                   <>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Format</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Format</label>
                       <div className="grid grid-cols-3 gap-2">
                         {['image/jpeg', 'image/png', 'image/webp'].map((format) => (
                           <button
                             key={format}
                             onClick={() => setConfig({ ...config, format: format as ImageExportConfig['format'] })}
-                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                            className={`chef-pressable chef-hit-y grid min-h-11 place-items-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors ${
                               config.format === format
-                                ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/20'
-                                : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+                                ? 'border-[var(--accent-rest)] bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]'
+                                : 'border-[var(--border-strong)] text-[var(--text-primary)] hover:border-[var(--accent-rest)]'
                             }`}
                           >
                             {format.split('/')[1].toUpperCase()}
@@ -401,88 +620,110 @@ export const PDFToImage: React.FC = () => {
                       </div>
                     </div>
 
-                    {config.format !== 'image/png' && (
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Quality</label>
-                          <span className="text-xs font-mono text-slate-400">{Math.round(config.quality * 100)}%</span>
-                        </div>
-                        <ChefSlider
-                          min={0.1}
-                          max={1}
-                          step={0.01}
-                          value={config.quality}
-                          onChange={(next) => setConfig({ ...config, quality: next })}
+                    <div className="grid grid-cols-2 gap-3">
+                      {config.format !== 'image/png' && (
+                        <ChefSliderField
+                          label="Quality"
+                          suffix="%"
+                          min={MIN_IMAGE_EXPORT_QUALITY}
+                          max={100}
+                          step={1}
+                          value={Math.round(config.quality * 100)}
+                          onChange={(next) => setConfig({ ...config, quality: next / 100 })}
                           ariaLabel="Image quality"
                         />
+                      )}
+
+                      <div className={config.format === 'image/png' ? 'col-span-2' : undefined}>
+                        <ChefSliderField
+                          label="Resolution"
+                          suffix="×"
+                          decimals={2}
+                          fixedDecimals
+                          min={MIN_IMAGE_EXPORT_SCALE}
+                          max={MAX_IMAGE_EXPORT_SCALE}
+                          step={0.05}
+                          value={config.scale}
+                          onChange={(next) => setConfig({ ...config, scale: next })}
+                          ariaLabel="Image resolution"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]" htmlFor="pdf-to-image-pages">
+                        Pages
+                      </label>
+                      <input
+                        id="pdf-to-image-pages"
+                        value={pageSelection}
+                        onChange={(event) => setPageSelection(event.target.value)}
+                        placeholder="All pages — or 1,3-5"
+                        className="chef-field"
+                      />
+                      {resolvedPageSelection === null && (
+                        <p role="alert" className="text-xs font-medium text-rose-600 dark:text-rose-300">
+                          Use page numbers or ranges such as 1,3-5.
+                        </p>
+                      )}
+                    </div>
+
+                    {requiresLargeJobConfirmation && (
+                      /* Kept in full: this is the one place the tool can warn
+                         that a large export may exhaust the tab's memory. */
+                      <div role="note" className="rounded-[var(--radius-field)] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500 dark:bg-amber-500/10 dark:text-amber-100">
+                        <p className="font-bold">Large browser export</p>
+                        <p className="mt-1 leading-relaxed">
+                          {exportPageCount} pages will keep many rendered images in browser memory. The current estimate is roughly {estimatedWorkingMemoryMb} MB, but complex pages can need much more. Keep this tab open and close other heavy tabs if the device is low on memory.
+                        </p>
+                        <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={largeJobConfirmed}
+                            onChange={(event) => setLargeJobConfirmed(event.target.checked)}
+                            className="h-5 w-5 accent-blue-600"
+                          />
+                          Continue with this export
+                        </label>
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Resolution</label>
-                        <span className="text-xs font-mono text-slate-400">{Math.round(config.scale * 72)} DPI</span>
-                      </div>
-                      <ChefSlider
-                        min={1}
-                        max={4}
-                        step={0.05}
-                        value={config.scale}
-                        onChange={(next) => setConfig({ ...config, scale: next })}
-                        ariaLabel="Image resolution"
-                      />
-                    </div>
-
-                    <button
-                      onClick={handlePageExport}
-                      disabled={status.isProcessing || !preview}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {status.isProcessing ? <Loader2 className="animate-spin" /> : <Download size={20} />}
-                      <span>Convert {pdfDoc?.numPages} Pages</span>
-                    </button>
                   </>
                 ) : (
                   <>
-                    <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
-                      <div className="font-bold">Embedded image extraction</div>
-                      <p>Exports image objects found inside the PDF as lossless PNG files, without rasterizing full pages.</p>
-                    </div>
+                    {/* Kept: the output format is not visible anywhere else. */}
+                    <p className="rounded-[var(--radius-field)] border border-emerald-200 bg-emerald-50/80 p-3 type-footnote text-emerald-900 dark:border-emerald-400 dark:bg-emerald-950/20 dark:text-emerald-200">
+                      Image objects inside the PDF are exported as lossless PNG, without rasterizing pages.
+                    </p>
 
                     {hasDetectedEmbeddedImages ? (
                       <>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                             <span>Selection</span>
                             <span>{selectedEmbeddedImages.length} / {embeddedImages.length}</span>
                           </div>
                           <div className="flex gap-2">
                             <button
+                              type="button"
                               onClick={() => setSelectedEmbeddedIds(embeddedImages.map((image) => image.id))}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                              className="chef-target chef-pressable rounded-[var(--radius-control)] border border-[var(--border-strong)] px-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-rest)]"
                             >
                               Select all
                             </button>
                             <button
+                              type="button"
                               onClick={() => setSelectedEmbeddedIds([])}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                              className="chef-target chef-pressable rounded-[var(--radius-control)] border border-[var(--border-strong)] px-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-rest)]"
                             >
                               Clear
                             </button>
                           </div>
                         </div>
 
-                        <button
-                          onClick={handleEmbeddedExport}
-                          disabled={status.isProcessing || selectedEmbeddedImages.length === 0}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                          {status.isProcessing ? <Loader2 className="animate-spin" /> : <Download size={20} />}
-                          <span>Download Selected</span>
-                        </button>
                       </>
                     ) : (
-                      <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      <div className="rounded-[var(--radius-field)] border border-dashed border-[var(--border-strong)] p-3 text-sm text-[var(--text-secondary)]">
                         {isScanningImages ? 'Scanning this PDF for embedded images…' : 'No embedded raster images were detected in this PDF.'}
                       </div>
                     )}
@@ -492,7 +733,7 @@ export const PDFToImage: React.FC = () => {
             </div>
 
             {exportMode === 'pages' ? (
-              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950/50">
+              <div className="relative flex min-h-[30dvh] flex-1 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)] md:min-h-0">
                 <div className="absolute right-2 top-2 z-20 sm:right-4 sm:top-4">
                   <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
                 </div>
@@ -502,116 +743,110 @@ export const PDFToImage: React.FC = () => {
                   onPointerDown={handlePointerDown}
                 >
                   {isGeneratingPreview && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-black/50">
-                      <Loader2 className="animate-spin text-blue-500" size={40} />
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-raised)]/70 backdrop-blur-sm">
+                      <Loader2 className="animate-spin text-[var(--accent-text)]" size={40} />
                     </div>
                   )}
                   {preview ? (
                     <div
-                      className="relative will-change-transform"
-                      style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+                      className="relative"
+                      style={zoom === 1 ? undefined : { transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
                     >
-                      <img
-                        src={preview.objectUrl}
-                        alt="Preview"
-                        className="max-h-[68dvh] max-w-full select-none object-contain shadow-2xl md:max-h-[80vh]"
-                        draggable={false}
-                      />
+                      <PageImagePreview pdfDoc={pdfDoc} scale={config.scale} />
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center text-slate-400">
+                    <div className="flex flex-col items-center text-[var(--text-tertiary)]">
                       <FileImage size={48} className="mb-2 opacity-50" />
                       <p>Generating preview...</p>
                     </div>
                   )}
                 </div>
 
-                <div className="border-t border-slate-200 bg-white p-3 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900">
-                  Zoom in to inspect details. {zoom > 1 && 'Drag to pan.'}
-                </div>
+
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-                  <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
-                    <ImageIcon size={18} className="text-emerald-500" />
-                    Embedded Images
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-[var(--border-hairline)] bg-[var(--surface-raised)]">
+                <div className="border-b border-[var(--border-hairline)] px-3 py-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                    <ImageIcon aria-hidden size={18} className="text-[var(--accent-text)]" />
+                    Embedded images
                   </div>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Review the image assets detected in the PDF and download the ones you want as lossless PNG.
-                  </p>
                 </div>
 
-                <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
+                <div className="custom-scrollbar flex-1 overflow-y-auto p-3">
                   {isScanningImages ? (
-                    <div className="flex h-full flex-col items-center justify-center text-slate-500">
+                    <div className="flex h-full flex-col items-center justify-center text-[var(--text-secondary)]">
                       <Loader2 className="mb-4 animate-spin" size={32} />
                       <p>Scanning PDF for embedded images…</p>
                     </div>
                   ) : embeddedImages.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center text-slate-500">
+                    <div className="flex h-full flex-col items-center justify-center text-[var(--text-secondary)]">
                       <ImageIcon size={40} className="mb-3 opacity-50" />
                       <p>No embedded raster images were detected.</p>
                     </div>
                   ) : (
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                       {embeddedImages.map((image, index) => {
                         const isSelected = selectedEmbeddedIds.includes(image.id);
                         return (
-                          <button
+                          <article
                             key={image.id}
-                            type="button"
-                            onClick={() => toggleEmbeddedSelection(image.id)}
                             className={`overflow-hidden rounded-2xl border text-left transition-all ${
                               isSelected
-                                ? 'border-emerald-500 shadow-lg shadow-emerald-500/10'
-                                : 'border-slate-200 hover:border-emerald-300 dark:border-slate-700 dark:hover:border-emerald-700'
+                                ? 'border-[var(--accent-rest)] shadow-lg'
+                                : 'border-[var(--border-strong)]'
                             }`}
                           >
-                            <div className="flex aspect-[4/3] items-center justify-center bg-slate-100 p-4 dark:bg-slate-950/60">
-                              <img src={image.objectUrl} alt={`Embedded image ${index + 1}`} className="max-h-full max-w-full object-contain" />
-                            </div>
+                            <button
+                              type="button"
+                              aria-pressed={isSelected}
+                              aria-label={`Image ${index + 1}${isSelected ? ', selected' : ''}`}
+                              onClick={() => toggleEmbeddedSelection(image.id)}
+                              className="chef-pressable block w-full"
+                            >
+                              <div className="flex aspect-[4/3] items-center justify-center bg-[var(--surface-sunken)] p-3">
+                                <img src={image.objectUrl} alt="" aria-hidden className="max-h-full max-w-full object-contain" />
+                              </div>
+                            </button>
 
-                            <div className="space-y-3 bg-white p-4 dark:bg-slate-900">
+                            <div className="space-y-2 bg-[var(--surface-raised)] p-3">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <div className="text-sm font-bold text-slate-900 dark:text-white">Image {index + 1}</div>
-                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                  <div className="text-sm font-bold text-[var(--text-primary)]">Image {index + 1}</div>
+                                  <div className="text-xs text-[var(--text-secondary)]">
                                     Pages {image.pageNumbers.join(', ')}
                                   </div>
                                 </div>
-                                <div className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+                                <div className={`type-caption rounded-full px-2 py-1 uppercase ${
                                   isSelected
-                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                                    ? 'bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]'
+                                    : 'bg-[var(--surface-sunken)] text-[var(--text-secondary)]'
                                 }`}>
-                                  {isSelected ? 'Selected' : 'Tap to select'}
+                                  {isSelected ? 'Selected' : 'Not selected'}
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/80">
-                                  <div className="font-semibold text-slate-700 dark:text-slate-200">{image.width} × {image.height}</div>
+                              <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
+                                <div className="rounded-[var(--radius-control)] bg-[var(--surface-sunken)] px-3 py-2">
+                                  <div className="font-semibold text-[var(--text-body)]">{image.width} × {image.height}</div>
                                   <div>pixels</div>
                                 </div>
-                                <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/80">
-                                  <div className="font-semibold text-slate-700 dark:text-slate-200">{formatBytes(image.byteSize)}</div>
+                                <div className="rounded-[var(--radius-control)] bg-[var(--surface-sunken)] px-3 py-2">
+                                  <div className="font-semibold text-[var(--text-body)]">{formatBytes(image.byteSize)}</div>
                                   <div>lossless PNG</div>
                                 </div>
                               </div>
 
                               <button
                                 type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void downloadEmbeddedImages([image]);
-                                }}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                                aria-label={`Download image ${index + 1}`}
+                                onClick={() => void downloadEmbeddedImages([image])}
+                                className="chef-target chef-pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-strong)] text-sm font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-rest)]"
                               >
-                                <Download size={16} /> Download image
+                                <Download aria-hidden size={16} /> Download image
                               </button>
                             </div>
-                          </button>
+                          </article>
                         );
                       })}
                     </div>
@@ -619,9 +854,9 @@ export const PDFToImage: React.FC = () => {
                 </div>
               </div>
             )}
-          </motion.div>
-        )}
+        </motion.div>
       </AnimatePresence>
+      <StatusToast status={status} />
     </div>
   );
 };

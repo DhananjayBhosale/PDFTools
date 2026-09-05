@@ -2,18 +2,39 @@
 <html lang="en" class="antialiased">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f6f1e8" />
+    <!-- The packaged shell boundary. Everything parsed after this element is subject
+         to it, which covers every inline script, the built module and the built
+         stylesheet in the production document. No remote runtime asset is permitted:
+         scripts, styles, workers and connections resolve to this origin, previews and
+         the one build-inlined face resolve to data or blob, WASM runs without
+         unsafe-eval, and the two inline blocks below are admitted by
+         their exact content hashes rather than by unsafe-inline. The single remote
+         connect entry is the canonical host the retired-host redirect probes; it is
+         unreachable from the packaged localhost shell. frame-ancestors is omitted
+         because a meta-delivered policy must ignore it and would log doing so. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-qMjuAOPOEDIrf4vx6BXyVF+DONy83NemGR1cg1lbOAk=' 'sha256-Xcwt7cOmPovdFFRjVKObF4J9aEsWbuDJHD2HpRdscD4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self' blob:; connect-src 'self' data: blob: https://pdfchef.dhananjaytech.app"
+    />
+    <!-- viewport-fit=cover hands the safe-area insets to CSS; without it the tab
+         bar sits above the home indicator instead of behind it. No maximum-scale
+         and no user-scalable=no: pinch zoom stays available. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f8f5ef" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="PDF Chef" />
+    <meta name="color-scheme" content="light dark" />
 
     <title>PDF Chef - Private PDF Tools</title>
     <meta name="title" content="PDF Chef - Private PDF Tools" />
     <meta
       name="description"
-      content="Private PDF tools for your device. Merge, split, convert, and protect in the browser."
+      content="Private PDF tools that run in your browser. Merge, split, convert, edit, secure, and optimize PDFs locally."
     />
     <meta
       name="keywords"
-      content="pdf tools, private pdf, merge pdf, split pdf, compress pdf, browser pdf tools"
+      content="pdf tools, private pdf, merge pdf, split pdf, compress pdf, edit pdf, make fillable pdf, word to pdf, powerpoint to pdf, batch pdf, sign pdf, watermark pdf, protect pdf, unlock pdf, pdf to word, pdf to image, image to pdf, extract text, ocr pdf, browser pdf tools"
     />
     <meta name="author" content="PDF Chef" />
     <meta name="robots" content="index, follow" />
@@ -23,29 +44,28 @@
     <meta property="og:title" content="PDF Chef - Private PDF Tools" />
     <meta
       property="og:description"
-      content="Private PDF tools for your device. Merge, split, convert, and protect in the browser."
+      content="Private PDF tools that run in your browser. Merge, split, convert, edit, secure, and optimize PDFs locally."
     />
-    <meta property="og:image" content="/og-image.svg" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="500" />
+    <meta property="og:image:alt" content="PDF Chef original red app logo" />
 
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content="https://pdfchef.dhananjaytech.app/" />
     <meta property="twitter:title" content="PDF Chef - Private PDF Tools" />
     <meta
       property="twitter:description"
-      content="Private PDF tools for your device. Merge, split, convert, and protect in the browser."
+      content="Private PDF tools that run in your browser. Merge, split, convert, edit, secure, and optimize PDFs locally."
     />
-    <meta property="twitter:image" content="/og-image.svg" />
+    <meta property="twitter:image" content="/og-image.png" />
+    <meta property="twitter:image:alt" content="PDF Chef original red app logo" />
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pdf-chef-app-icon-512.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/pdf-chef-app-icon-512.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="canonical" href="https://pdfchef.dhananjaytech.app/" />
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
 
     <script type="application/ld+json">
       {
@@ -53,25 +73,58 @@
         "@type": "WebApplication",
         "name": "PDF Chef",
         "url": "https://pdfchef.dhananjaytech.app",
-        "description": "Private PDF tools for your device. Merge, split, convert, and protect in the browser.",
+        "description": "Private PDF tools that run in your browser. Merge, split, convert, edit, secure, and optimize PDFs locally.",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Web",
+        "browserRequirements": "Requires JavaScript. PDFs are processed locally in the browser.",
         "offers": {
           "@type": "Offer",
           "price": "0",
           "priceCurrency": "USD"
-        }
+        },
+        "featureList": [
+          "Create PDF",
+          "Compress PDF",
+          "Merge PDF",
+          "Split PDF",
+          "Edit PDF",
+          "Sign PDF",
+          "Watermark PDF",
+          "Protect PDF",
+          "Unlock PDF",
+          "Delete Pages",
+          "Page Numbers",
+          "Reorder Pages",
+          "Rotate Pages",
+          "Flatten PDF",
+          "Extract Pages",
+          "Image to PDF",
+          "PDF to Image",
+          "PDF to Word",
+          "Word to PDF",
+          "PowerPoint to PDF",
+          "Make Fillable",
+          "Batch PDF processing",
+          "Local output history",
+          "Extract Text",
+          "Metadata",
+          "Repair PDF",
+          "Compare Summary"
+        ]
       }
     </script>
     <script>
       (function () {
         var oldHost = "pdftools.dhananjaytech.app";
         var newHost = "pdfchef.dhananjaytech.app";
+        // Inert in every packaged shell: those are served from localhost, which is
+        // never the retired public host, and the native bridge is refused outright.
+        // The target is fixed to https so the redirect can never step down a scheme.
+        if (window.Capacitor) return;
         if (window.location.hostname !== oldHost) return;
 
         var target =
-          window.location.protocol +
-          "//" +
+          "https://" +
           newHost +
           window.location.pathname +
           window.location.search +
@@ -98,8 +151,8 @@
       })();
     </script>
 </head>
-  <body class="overflow-x-hidden min-h-screen bg-[var(--chef-bg)] text-slate-900 dark:text-slate-50">
-    <div id="root" class="min-h-screen flex flex-col"></div>
+  <body class="min-h-screen overflow-x-hidden">
+    <div id="root" class="flex min-h-screen flex-col"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

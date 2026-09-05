@@ -1,0 +1,7 @@
+{
+  "health": "ok",
+  "invalidValueCount": 0,
+  "values": {
+    "tool_option_memory": "{\"compress\":{\"quality\":75},\"watermark\":{\"text\":\"A/B\"}}"
+  }
+}

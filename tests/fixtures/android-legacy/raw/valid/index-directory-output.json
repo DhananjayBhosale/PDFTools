@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "displayName": "Synthetic images",
+    "toolName": "PDF to Images",
+    "sizeBytes": 24000,
+    "createdAtMillis": 1700000000001,
+    "storedFileName": "synthetic-images",
+    "mimeType": "",
+    "isDirectory": true,
+    "itemCount": 3
+  }
+]

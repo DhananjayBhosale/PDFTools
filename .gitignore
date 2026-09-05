@@ -12,6 +12,22 @@ dist
 dist-ssr
 *.local
 
+# Generated offline/runtime assets (rebuilt by npm scripts)
+public/vendor/
+
+# Local automation, deployment, and planning state
+.planning/
+.playwright-cli/
+.playwright-mcp/
+.superpowers/
+.wrangler/
+output/
+
+# One-off local QA captures
+agent*-*.png
+a11y-*.png
+pdf-chef-ios-*.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -123,12 +123,22 @@ export const PageThumbnail: React.FC<PageThumbnailProps> = ({
       ref={rootRef}
       layout
       whileHover={{ y: -4 }}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      aria-label={`Page ${pageIndex + 1}${isSelected ? ', selected' : ''}`}
       onClick={onToggle}
+      onKeyDown={(event: React.KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onToggle?.();
+      }}
       className={`
         relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-200
+        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]
         ${isSelected 
           ? 'border-blue-500 shadow-md ring-2 ring-blue-500/20' 
-          : 'border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500'
+          : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500'
         }
       `}
     >
@@ -147,18 +157,16 @@ export const PageThumbnail: React.FC<PageThumbnailProps> = ({
             draggable={false}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
-            <div className="h-16 w-12 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 animate-pulse" />
-          </div>
+          <div aria-hidden className="absolute inset-0 animate-pulse bg-[var(--surface-sunken)]" />
         )}
         
         {/* Selection Overlay (Active) */}
         {isSelected && (
-          <div className="absolute inset-0 bg-blue-500/10 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[var(--accent-rest)]/[0.04]">
             <motion.div 
               initial={{ scale: 0 }} 
               animate={{ scale: 1 }}
-              className="bg-blue-500 text-white p-2 rounded-full shadow-lg"
+              className="bg-[var(--accent-rest)] text-[var(--text-on-accent)] p-2 rounded-full shadow-lg"
             >
               <Check size={20} strokeWidth={3} />
             </motion.div>
@@ -178,7 +186,7 @@ export const PageThumbnail: React.FC<PageThumbnailProps> = ({
 
         {loadError && (
           <div className="absolute inset-0 bg-rose-500/10 flex items-center justify-center pointer-events-none">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-rose-500">{loadError}</span>
+            <span className="type-caption text-[var(--status-danger-text)]">{loadError}</span>
           </div>
         )}
       </div>
@@ -187,7 +195,7 @@ export const PageThumbnail: React.FC<PageThumbnailProps> = ({
       <div className={`
         px-3 py-2 text-xs font-bold flex items-center justify-between
         ${isSelected 
-          ? 'bg-blue-500 text-white' 
+          ? 'bg-[var(--accent-rest)] text-[var(--text-on-accent)]' 
           : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400'
         }
       `}>

@@ -1,0 +1,13 @@
+{
+  "health": "ok",
+  "invalidValueCount": 0,
+  "values": {
+    "theme_mode": "DYNAMIC",
+    "app_font_option": "INTER",
+    "onboarding_completed": true,
+    "tool_usage_memory": "{\"runs\":{\"COMPRESS\":3},\"followUps\":{\"COMPRESS\":{\"PROTECT\":2}}}",
+    "savings_tally": "{\"bytesSaved\":3250,\"filesReduced\":2}",
+    "tool_option_memory": "{\"COMPRESS\":\"quality=75; mode=balanced\",\"WATERMARK\":\"text=Internal / Draft; url=https://example.invalid/watermark?id=1&lang=en\"}",
+    "last_privacy_line_index": 2
+  }
+}

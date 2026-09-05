@@ -11,23 +11,93 @@ import {
   StandardFonts,
 } from 'pdf-lib';
 import JSZip from 'jszip';
-import { jsPDF } from 'jspdf';
 import type { PDFMetadata } from '../types';
 import type { PdfFormFieldValue } from './pdfBrowser';
-import { loadPDFDocument, loadProtectedPDFDocument, renderPageAsImage } from './pdfBrowser';
-import { readFileAsArrayBuffer, revokeObjectUrl } from './pdfShared';
+import { loadPDFDocument } from './pdfBrowser';
+import { readFileAsArrayBuffer } from './pdfShared';
+import { decryptPdf, encryptPdfWithAes128 } from './qpdfBrowser';
+import {
+  getVisualPageSize,
+  normalizePageRotation,
+  rotatePointAroundCenter,
+  rotatedBoxOrigin,
+  visualPointToPdf,
+  visualRectangleToPdf,
+} from './pdfEditorGeometry';
+import type { TextReplacementSource } from './pdfEditorTextReplacement';
+import {
+  DELETE_ALL_PAGES_MESSAGE,
+  DELETE_PAGES_TOO_LARGE_MESSAGE,
+  MAX_DELETE_PAGES_INPUT_BYTES,
+  MIN_PROTECT_PASSWORD_LENGTH,
+  NO_PAGES_MESSAGE,
+  PASSWORD_REQUIRED_MESSAGE,
+  PASSWORD_TOO_SHORT_MESSAGE,
+  UNLOCK_FAILED_MESSAGE,
+  UNLOCK_PASSWORD_REQUIRED_MESSAGE,
+  buildPageExportLabel,
+  buildPageNumberText,
+  pageNumberLayout,
+  remainingPageIndices,
+  resolveOptionalPageSelection,
+  resolvePageNumberRange,
+  resolvePageOrder,
+  resolvePageSelection,
+  rotatedTextOrigin,
+  sanitizePageNumberFontSize,
+  sanitizePdfText,
+  watermarkLayout,
+  DEFAULT_PAGE_NUMBER_FONT_SIZE,
+  DEFAULT_PAGE_NUMBER_X_PERCENT,
+  DEFAULT_PAGE_NUMBER_Y_PERCENT,
+  DEFAULT_WATERMARK_COLOR_HEX,
+  DEFAULT_WATERMARK_ROTATION_DEGREES,
+  DEFAULT_WATERMARK_SIZE,
+  DEFAULT_WATERMARK_X_PERCENT,
+  DEFAULT_WATERMARK_Y_PERCENT,
+  WATERMARK_MAX_ROTATION_DEGREES,
+  WATERMARK_MIN_ROTATION_DEGREES,
+  pageRotationFitScale,
+  pageRotationMetadataDegreesOrNull,
+  sanitizePageRotationDegrees,
+} from './androidParity';
 
 const pageCountCache = new WeakMap<File, Promise<number>>();
 
-export const mergePDFs = async (files: File[]): Promise<Uint8Array> => {
+const throwIfPdfJobAborted = (signal?: AbortSignal) => {
+  if (!signal?.aborted) return;
+  if (signal.reason !== undefined) throw signal.reason;
+  const error = new Error('PDF operation cancelled.');
+  error.name = 'AbortError';
+  throw error;
+};
+
+/** Give the browser a chance to deliver a pending Cancel tap between expensive file/page units. */
+const pdfJobCheckpoint = async (signal?: AbortSignal, yieldToEvents = false) => {
+  throwIfPdfJobAborted(signal);
+  if (!signal || !yieldToEvents) return;
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  throwIfPdfJobAborted(signal);
+};
+
+export const mergePDFs = async (files: File[], signal?: AbortSignal): Promise<Uint8Array> => {
+  await pdfJobCheckpoint(signal);
   const mergedPdf = await PDFDocument.create();
-  for (const file of files) {
+  for (let index = 0; index < files.length; index += 1) {
+    await pdfJobCheckpoint(signal, index > 0);
+    const file = files[index];
     const arrayBuffer = await readFileAsArrayBuffer(file);
+    throwIfPdfJobAborted(signal);
     const pdf = await PDFDocument.load(arrayBuffer);
+    throwIfPdfJobAborted(signal);
     const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
     copiedPages.forEach((page) => mergedPdf.addPage(page));
+    throwIfPdfJobAborted(signal);
   }
-  return mergedPdf.save();
+  await pdfJobCheckpoint(signal, true);
+  const bytes = await mergedPdf.save();
+  await pdfJobCheckpoint(signal, true);
+  return bytes;
 };
 
 export const createPDFFromImages = async (
@@ -132,147 +202,370 @@ export const createPDFFromLayout = async (pages: PDFPageLayout[]): Promise<Uint8
   return pdfDoc.save();
 };
 
-export const splitPDF = async (file: File): Promise<Blob> => {
-  const arrayBuffer = await readFileAsArrayBuffer(file);
-  const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const zip = new JSZip();
+/** One page per file, which is the Android tool's `pagesPerSplit=1` default. */
+export const splitPDF = async (file: File, signal?: AbortSignal): Promise<SplitResult> =>
+  splitPDFByPagesPerFile(file, 1, [], undefined, signal);
 
-  for (let i = 0; i < pdfDoc.getPageCount(); i += 1) {
-    const newPdf = await PDFDocument.create();
-    const [page] = await newPdf.copyPages(pdfDoc, [i]);
-    newPdf.addPage(page);
-    zip.file(`${file.name.replace('.pdf', '')}_page_${i + 1}.pdf`, await newPdf.save());
-  }
+export interface SplitResult {
+  blob: Blob;
+  /** True when more than one part was produced and the parts had to be zipped to be delivered. */
+  isArchive: boolean;
+  partCount: number;
+}
 
-  return zip.generateAsync({ type: 'blob' });
-};
-
+/**
+ * `SplitPdfToolProcessor` in the Android app.
+ *
+ * A split that yields a single part is a single PDF on both surfaces — the app writes one file
+ * instead of a folder, so handing back a one-entry zip here would make the same request produce a
+ * different kind of result depending on which surface ran it. Multi-part names follow the app's
+ * `part_<n>_<pageLabel>.pdf`.
+ */
 export const splitPDFByPagesPerFile = async (
   file: File,
   pagesPerFile: number,
   selectedPageIndices: number[] = [],
-): Promise<Blob> => {
+  onProgress?: (current: number, total: number) => void,
+  signal?: AbortSignal,
+): Promise<SplitResult> => {
+  await pdfJobCheckpoint(signal);
   const sanitizedPagesPerFile = Math.max(1, Math.floor(pagesPerFile || 1));
   const arrayBuffer = await readFileAsArrayBuffer(file);
+  throwIfPdfJobAborted(signal);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const zip = new JSZip();
+  throwIfPdfJobAborted(signal);
   const totalPages = pdfDoc.getPageCount();
-  const normalizedSelection = selectedPageIndices
-    .filter((index) => Number.isInteger(index) && index >= 0 && index < totalPages)
-    .sort((a, b) => a - b);
-  const exportIndices = normalizedSelection.length > 0
-    ? Array.from(new Set(normalizedSelection))
-    : Array.from({ length: totalPages }, (_, index) => index);
-
-  for (let startIndex = 0; startIndex < exportIndices.length; startIndex += sanitizedPagesPerFile) {
-    const chunk = exportIndices.slice(startIndex, startIndex + sanitizedPagesPerFile);
-    const firstPage = chunk[0] + 1;
-    const lastPage = chunk[chunk.length - 1] + 1;
-    const newPdf = await PDFDocument.create();
-    const copiedPages = await newPdf.copyPages(pdfDoc, chunk);
-    copiedPages.forEach((page) => newPdf.addPage(page));
-    const partNumber = Math.floor(startIndex / sanitizedPagesPerFile) + 1;
-    zip.file(
-      `${file.name.replace('.pdf', '')}_part_${partNumber}_pages_${firstPage}-${lastPage}.pdf`,
-      await newPdf.save(),
-    );
+  if (totalPages === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
   }
 
-  return zip.generateAsync({ type: 'blob' });
+  const exportIndices = resolveOptionalPageSelection(
+    selectedPageIndices.map((index) => index + 1),
+    totalPages,
+    'Pages to split',
+  );
+  const totalParts = Math.ceil(exportIndices.length / sanitizedPagesPerFile);
+
+  if (totalParts <= 1) {
+    const singlePdf = await PDFDocument.create();
+    const copiedPages = await singlePdf.copyPages(pdfDoc, exportIndices);
+    await pdfJobCheckpoint(signal, true);
+    for (let index = 0; index < copiedPages.length; index += 1) {
+      throwIfPdfJobAborted(signal);
+      const page = copiedPages[index];
+      onProgress?.(index + 1, exportIndices.length);
+      singlePdf.addPage(page);
+      if ((index + 1) % 8 === 0) await pdfJobCheckpoint(signal, true);
+    }
+    await pdfJobCheckpoint(signal, true);
+    const bytes = await singlePdf.save();
+    await pdfJobCheckpoint(signal, true);
+    return {
+      blob: new Blob([bytes], { type: 'application/pdf' }),
+      isArchive: false,
+      partCount: 1,
+    };
+  }
+
+  const zip = new JSZip();
+  for (let startIndex = 0; startIndex < exportIndices.length; startIndex += sanitizedPagesPerFile) {
+    await pdfJobCheckpoint(signal, true);
+    const chunk = exportIndices.slice(startIndex, startIndex + sanitizedPagesPerFile);
+    const partNumber = Math.floor(startIndex / sanitizedPagesPerFile) + 1;
+    onProgress?.(partNumber, totalParts);
+    const partPdf = await PDFDocument.create();
+    const copiedPages = await partPdf.copyPages(pdfDoc, chunk);
+    throwIfPdfJobAborted(signal);
+    copiedPages.forEach((page) => partPdf.addPage(page));
+    const partBytes = await partPdf.save();
+    throwIfPdfJobAborted(signal);
+    zip.file(`part_${partNumber}_${buildPageExportLabel(chunk)}.pdf`, partBytes);
+  }
+
+  await pdfJobCheckpoint(signal, true);
+  const archive = await zip.generateAsync({ type: 'blob' });
+  await pdfJobCheckpoint(signal, true);
+  return {
+    blob: archive,
+    isArchive: true,
+    partCount: totalParts,
+  };
 };
 
-export const extractPages = async (file: File, pageIndices: number[]): Promise<Uint8Array> => {
+/** Greedy, measured split matching Android's maximum-size mode. Every candidate PDF is actually
+ * serialized before it is accepted, so the limit is based on output bytes rather than a page-count
+ * guess. A page that exceeds the limit on its own is refused with a recovery instruction. */
+export const splitPDFByMaximumSize = async (
+  file: File,
+  maximumSizeMb: number,
+  selectedPageIndices: number[] = [],
+  onProgress?: (current: number, total: number) => void,
+  signal?: AbortSignal,
+): Promise<SplitResult> => {
+  await pdfJobCheckpoint(signal);
+  const maximumBytes = Math.floor(maximumSizeMb * 1024 * 1024);
+  if (!Number.isFinite(maximumBytes) || maximumBytes < 1024 * 1024) {
+    throw new Error('Maximum split size must be at least 1 MB.');
+  }
+
+  const sourceBytes = await readFileAsArrayBuffer(file);
+  throwIfPdfJobAborted(signal);
+  const source = await PDFDocument.load(sourceBytes);
+  throwIfPdfJobAborted(signal);
+  const totalPages = source.getPageCount();
+  if (!totalPages) throw new Error(NO_PAGES_MESSAGE);
+  const indices = resolveOptionalPageSelection(
+    selectedPageIndices.map((index) => index + 1),
+    totalPages,
+    'Pages to split',
+  );
+
+  const serialize = async (chunk: number[]) => {
+    throwIfPdfJobAborted(signal);
+    const candidate = await PDFDocument.create();
+    const pages = await candidate.copyPages(source, chunk);
+    throwIfPdfJobAborted(signal);
+    pages.forEach((page) => candidate.addPage(page));
+    const bytes = await candidate.save();
+    throwIfPdfJobAborted(signal);
+    return bytes;
+  };
+
+  const parts: Array<{ indices: number[]; bytes: Uint8Array }> = [];
+  let current: number[] = [];
+  let currentBytes: Uint8Array | null = null;
+  for (let position = 0; position < indices.length; position += 1) {
+    await pdfJobCheckpoint(signal, true);
+    const pageIndex = indices[position];
+    const candidateIndices = [...current, pageIndex];
+    const candidateBytes = await serialize(candidateIndices);
+    if (candidateBytes.byteLength <= maximumBytes) {
+      current = candidateIndices;
+      currentBytes = candidateBytes;
+    } else if (current.length) {
+      parts.push({ indices: current, bytes: currentBytes ?? await serialize(current) });
+      const singleBytes = await serialize([pageIndex]);
+      if (singleBytes.byteLength > maximumBytes) {
+        throw new Error(`Page ${pageIndex + 1} exceeds the ${maximumSizeMb} MB limit on its own. Compress first, then split again.`);
+      }
+      current = [pageIndex];
+      currentBytes = singleBytes;
+    } else {
+      throw new Error(`Page ${pageIndex + 1} exceeds the ${maximumSizeMb} MB limit on its own. Compress first, then split again.`);
+    }
+    onProgress?.(position + 1, indices.length);
+  }
+  if (current.length) parts.push({ indices: current, bytes: currentBytes ?? await serialize(current) });
+
+  await pdfJobCheckpoint(signal, true);
+  if (parts.length === 1) {
+    return { blob: new Blob([parts[0].bytes], { type: 'application/pdf' }), isArchive: false, partCount: 1 };
+  }
+  const zip = new JSZip();
+  parts.forEach((part, index) => zip.file(`part_${index + 1}_${buildPageExportLabel(part.indices)}.pdf`, part.bytes));
+  const archive = await zip.generateAsync({ type: 'blob' });
+  await pdfJobCheckpoint(signal, true);
+  return { blob: archive, isArchive: true, partCount: parts.length };
+};
+
+/**
+ * `ExtractPagesToolProcessor`. Takes 0-based indices, and refuses an empty or out-of-range
+ * selection with the app's wording instead of quietly producing a zero-page PDF.
+ */
+export const extractPages = async (
+  file: File,
+  pageIndices: number[],
+  label = 'Pages to extract',
+  signal?: AbortSignal,
+): Promise<Uint8Array> => {
+  await pdfJobCheckpoint(signal);
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  throwIfPdfJobAborted(signal);
+  const pdfDoc = await PDFDocument.load(arrayBuffer);
+  throwIfPdfJobAborted(signal);
+  const totalPages = pdfDoc.getPageCount();
+  if (totalPages === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
+  }
+
+  const resolved = resolvePageSelection(pageIndices.map((index) => index + 1), totalPages, label);
+  const newPdf = await PDFDocument.create();
+  const copiedPages = await newPdf.copyPages(pdfDoc, resolved);
+  await pdfJobCheckpoint(signal, true);
+  for (let index = 0; index < copiedPages.length; index += 1) {
+    throwIfPdfJobAborted(signal);
+    newPdf.addPage(copiedPages[index]);
+    if ((index + 1) % 8 === 0) await pdfJobCheckpoint(signal, true);
+  }
+  await pdfJobCheckpoint(signal, true);
+  const bytes = await newPdf.save();
+  await pdfJobCheckpoint(signal, true);
+  return bytes;
+};
+
+/**
+ * `DeletePagesToolProcessor`. The app refuses to delete every page and refuses inputs over 128 MB,
+ * both of which used to fall through here — deleting everything produced an empty document rather
+ * than an explanation.
+ */
+export const deletePagesFromPDF = async (file: File, pageIndicesToDelete: number[]): Promise<Uint8Array> => {
+  if (file.size > MAX_DELETE_PAGES_INPUT_BYTES) {
+    throw new Error(DELETE_PAGES_TOO_LARGE_MESSAGE);
+  }
+
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
+  const totalPages = pdfDoc.getPageCount();
+  if (totalPages === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
+  }
+
+  const deleteIndices = resolvePageSelection(
+    pageIndicesToDelete.map((index) => index + 1),
+    totalPages,
+    'Pages to delete',
+  );
+  if (deleteIndices.length >= totalPages) {
+    throw new Error(DELETE_ALL_PAGES_MESSAGE);
+  }
+
+  const keptIndices = remainingPageIndices(totalPages, new Set(deleteIndices));
   const newPdf = await PDFDocument.create();
-  const copiedPages = await newPdf.copyPages(pdfDoc, pageIndices);
+  const copiedPages = await newPdf.copyPages(pdfDoc, keptIndices);
   copiedPages.forEach((page) => newPdf.addPage(page));
   return newPdf.save();
 };
 
-export const rotatePDF = async (file: File, rotation: 90 | 180 | 270): Promise<Uint8Array> => {
+/**
+ * `ReorderPagesToolProcessor`. Takes 0-based indices and requires a complete permutation, so a
+ * dropped or duplicated page is reported rather than silently written out.
+ */
+export const reorderPDFPages = async (file: File, pageOrderIndices: number[]): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  pdfDoc.getPages().forEach((page) => {
-    const currentRotation = page.getRotation();
-    page.setRotation(degrees(currentRotation.angle + rotation));
-  });
-  return pdfDoc.save();
+  const totalPages = pdfDoc.getPageCount();
+  if (totalPages === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
+  }
+
+  const order = resolvePageOrder(pageOrderIndices.map((index) => index + 1), totalPages);
+  const newPdf = await PDFDocument.create();
+  const copiedPages = await newPdf.copyPages(pdfDoc, order);
+  copiedPages.forEach((page) => newPdf.addPage(page));
+  return newPdf.save();
 };
 
-export const rotateSpecificPages = async (file: File, rotations: { pageIndex: number; rotation: number }[]): Promise<Uint8Array> => {
+/**
+ * `RotatePagesToolProcessor` in the Android app.
+ *
+ * Quarter turns are written as `/Rotate`, which costs nothing and keeps the page byte-identical.
+ * Any other angle has to be redrawn, and is redrawn shrunk by `pageRotationFitScale` so the
+ * corners stay on the sheet. The app rasterizes at that point; embedding the page as a form
+ * XObject keeps the text selectable, which is strictly better and produces the same geometry.
+ *
+ * `rotations` carries 0-based page indices and degrees relative to the page's current orientation.
+ */
+export const rotateSpecificPages = async (
+  file: File,
+  rotations: { pageIndex: number; rotation: number }[],
+  onProgress?: (current: number, total: number) => void,
+): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
-  const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const pages = pdfDoc.getPages();
+  const sourcePdf = await PDFDocument.load(arrayBuffer);
+  const totalPages = sourcePdf.getPageCount();
+  if (totalPages === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
+  }
+
+  const requested = new Map<number, number>();
   rotations.forEach(({ pageIndex, rotation }) => {
-    if (pageIndex >= 0 && pageIndex < pages.length) {
-      const page = pages[pageIndex];
-      const currentRotation = page.getRotation();
-      page.setRotation(degrees(currentRotation.angle + rotation));
-    }
+    if (pageIndex < 0 || pageIndex >= totalPages) return;
+    const sanitized = sanitizePageRotationDegrees(rotation);
+    if (sanitized !== 0) requested.set(pageIndex, sanitized);
   });
-  return pdfDoc.save();
+
+  const allQuarterTurns = [...requested.values()].every(
+    (degreesValue) => pageRotationMetadataDegreesOrNull(degreesValue) !== null,
+  );
+
+  if (allQuarterTurns) {
+    const pages = sourcePdf.getPages();
+    let completed = 0;
+    [...requested.entries()]
+      .sort(([left], [right]) => left - right)
+      .forEach(([pageIndex, degreesValue]) => {
+        completed += 1;
+        onProgress?.(completed, requested.size);
+        const page = pages[pageIndex];
+        const current = ((page.getRotation().angle % 360) + 360) % 360;
+        const metadataDegrees = pageRotationMetadataDegreesOrNull(degreesValue) ?? 0;
+        page.setRotation(degrees((current + metadataDegrees) % 360));
+      });
+    return sourcePdf.save();
+  }
+
+  const outputPdf = await PDFDocument.create();
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+    onProgress?.(pageIndex + 1, totalPages);
+    const requestedDegrees = requested.get(pageIndex) ?? 0;
+    const metadataDegrees = pageRotationMetadataDegreesOrNull(requestedDegrees);
+
+    if (metadataDegrees !== null) {
+      const [copied] = await outputPdf.copyPages(sourcePdf, [pageIndex]);
+      const current = ((copied.getRotation().angle % 360) + 360) % 360;
+      copied.setRotation(degrees((current + metadataDegrees) % 360));
+      outputPdf.addPage(copied);
+      continue;
+    }
+
+    // A free angle is applied to the page's *visual* orientation, so any existing `/Rotate` is
+    // folded into the total and dropped from the output rather than being applied twice.
+    const sourcePage = sourcePdf.getPage(pageIndex);
+    const { width, height } = sourcePage.getSize();
+    const existingRotation = ((sourcePage.getRotation().angle % 360) + 360) % 360;
+    const totalRotation = sanitizePageRotationDegrees(existingRotation + requestedDegrees);
+    const fitScale = pageRotationFitScale(width, height, totalRotation);
+    const drawnWidth = width * fitScale;
+    const drawnHeight = height * fitScale;
+    const origin = rotatedBoxOrigin(width / 2, height / 2, drawnWidth, drawnHeight, totalRotation);
+
+    const embedded = await outputPdf.embedPage(sourcePage);
+    const outputPage = outputPdf.addPage([width, height]);
+    outputPage.drawPage(embedded, {
+      x: origin.x,
+      y: origin.y,
+      width: drawnWidth,
+      height: drawnHeight,
+      rotate: degrees(totalRotation),
+    });
+  }
+
+  return outputPdf.save();
+};
+
+/** Every page by the same amount, which is the app's `degrees=<n>` option with no `pages=` token. */
+export const rotatePDF = async (file: File, rotation: number): Promise<Uint8Array> => {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pageCount = (await PDFDocument.load(arrayBuffer)).getPageCount();
+  return rotateSpecificPages(
+    file,
+    Array.from({ length: pageCount }, (_, pageIndex) => ({ pageIndex, rotation })),
+  );
 };
 
 export const protectPDF = async (file: File, password: string): Promise<Uint8Array> => {
-  const normalizedPassword = password.trim();
-  if (!normalizedPassword) {
-    throw new Error('Password is required.');
+  const exactPassword = password;
+  if (!exactPassword || !/\S/.test(exactPassword)) {
+    throw new Error(PASSWORD_REQUIRED_MESSAGE);
+  }
+  // The Android processor enforces the same floor, so a 3-character password is rejected on both
+  // surfaces rather than producing a file whose protection is theatre.
+  if (exactPassword.length < MIN_PROTECT_PASSWORD_LENGTH) {
+    throw new Error(PASSWORD_TOO_SHORT_MESSAGE);
   }
 
-  const pdfDoc = await loadPDFDocument(file);
-  if (pdfDoc.numPages <= 0) {
-    throw new Error('PDF has no pages.');
-  }
-
-  const firstPage = await pdfDoc.getPage(1);
-  const firstViewport = firstPage.getViewport({ scale: 1 });
-  const firstOrientation = firstViewport.width > firstViewport.height ? 'landscape' : 'portrait';
-
-  const protectedDoc = new jsPDF({
-    orientation: firstOrientation,
-    unit: 'pt',
-    format: [firstViewport.width, firstViewport.height],
-    putOnlyUsedFonts: true,
-    compress: true,
-    encryption: {
-      userPassword: normalizedPassword,
-      ownerPassword: normalizedPassword,
-      userPermissions: ['print'],
-    } as any,
-  });
-
-  for (let pageIndex = 0; pageIndex < pdfDoc.numPages; pageIndex += 1) {
-    const page = await pdfDoc.getPage(pageIndex + 1);
-    const viewport = page.getViewport({ scale: 1 });
-    const { objectUrl } = await renderPageAsImage(pdfDoc, pageIndex, {
-      format: 'image/jpeg',
-      quality: 0.92,
-      scale: 1.8,
-    });
-
-    try {
-      if (pageIndex > 0) {
-        const orientation = viewport.width > viewport.height ? 'landscape' : 'portrait';
-        protectedDoc.addPage([viewport.width, viewport.height], orientation);
-      }
-
-      protectedDoc.addImage(
-        objectUrl,
-        'JPEG',
-        0,
-        0,
-        viewport.width,
-        viewport.height,
-        undefined,
-        'FAST',
-      );
-    } finally {
-      revokeObjectUrl(objectUrl);
-    }
-  }
-
-  return new Uint8Array(protectedDoc.output('arraybuffer'));
+  const input = new Uint8Array(await readFileAsArrayBuffer(file));
+  return encryptPdfWithAes128(input, exactPassword);
 };
 
 export const getPDFMetadata = async (file: File): Promise<PDFMetadata> => {
@@ -290,15 +583,47 @@ export const getPDFMetadata = async (file: File): Promise<PDFMetadata> => {
   };
 };
 
-export const setPDFMetadata = async (file: File, metadata: PDFMetadata): Promise<Uint8Array> => {
+/**
+ * `MetadataPdfToolProcessor` plus `parseMetadataUpdateOptions`/`MetadataUpdateOptions.asMap`.
+ *
+ * The app collapses whitespace in every value, writes only the fields that carry text, and treats
+ * `__clearAll` as "write null to all six". Blank-but-defined fields therefore leave the existing
+ * value alone unless `clearAll` is set, which is what stops an untouched form from wiping the
+ * document's own title.
+ */
+export const setPDFMetadata = async (
+  file: File,
+  metadata: PDFMetadata,
+  options?: { clearAll?: boolean },
+): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  if (metadata.title !== undefined) pdfDoc.setTitle(metadata.title);
-  if (metadata.author !== undefined) pdfDoc.setAuthor(metadata.author);
-  if (metadata.subject !== undefined) pdfDoc.setSubject(metadata.subject);
-  if (metadata.keywords !== undefined) pdfDoc.setKeywords(metadata.keywords.split(' '));
-  if (metadata.creator !== undefined) pdfDoc.setCreator(metadata.creator);
-  if (metadata.producer !== undefined) pdfDoc.setProducer(metadata.producer);
+
+  if (options?.clearAll) {
+    pdfDoc.setTitle('');
+    pdfDoc.setAuthor('');
+    pdfDoc.setSubject('');
+    pdfDoc.setKeywords([]);
+    pdfDoc.setCreator('');
+    pdfDoc.setProducer('');
+    return pdfDoc.save();
+  }
+
+  const write = (value: string | undefined, apply: (sanitized: string) => void) => {
+    if (value === undefined) return;
+    const sanitized = sanitizePdfText(value);
+    if (sanitized) apply(sanitized);
+  };
+
+  write(metadata.title, (value) => pdfDoc.setTitle(value));
+  write(metadata.author, (value) => pdfDoc.setAuthor(value));
+  write(metadata.subject, (value) => pdfDoc.setSubject(value));
+  // The app stores the keywords string verbatim; pdf-lib joins the array with a space, so a
+  // single-element array round-trips the same text instead of re-splitting the user's phrasing.
+  write(metadata.keywords, (value) => pdfDoc.setKeywords([value]));
+  write(metadata.creator, (value) => pdfDoc.setCreator(value));
+  write(metadata.producer, (value) => pdfDoc.setProducer(value));
+
   if (metadata.creationDate !== undefined) pdfDoc.setCreationDate(metadata.creationDate);
   if (metadata.modificationDate !== undefined) pdfDoc.setModificationDate(metadata.modificationDate);
   return pdfDoc.save();
@@ -323,10 +648,23 @@ export const getPDFPageCount = async (file: File): Promise<number> => {
   return next;
 };
 
+/**
+ * `FlattenPdfToolProcessor`. The app calls `documentCatalog?.acroForm?.flatten()`, so a PDF with no
+ * form is re-saved untouched instead of failing; pdf-lib's `getForm()` synthesises an empty form
+ * whose `flatten()` can still throw on unsupported widgets, so that case degrades the same way.
+ */
 export const flattenPDF = async (file: File): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  pdfDoc.getForm().flatten();
+  if (pdfDoc.getPageCount() === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
+  }
+
+  const hasAcroForm = pdfDoc.catalog.lookup(PDFName.of('AcroForm')) !== undefined;
+  if (hasAcroForm) {
+    pdfDoc.getForm().flatten();
+  }
+
   return pdfDoc.save();
 };
 
@@ -336,9 +674,7 @@ export const repairPDF = async (file: File): Promise<Uint8Array> => {
   return pdfDoc.save({ useObjectStreams: false });
 };
 
-export const removePDFMetadata = async (file: File): Promise<Uint8Array> => {
-  const arrayBuffer = await readFileAsArrayBuffer(file);
-  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true } as any);
+const clearPDFMetadataAndCatalogActions = (pdfDoc: PDFDocument) => {
   const cleanedDate = new Date(0);
 
   pdfDoc.setTitle('');
@@ -355,6 +691,13 @@ export const removePDFMetadata = async (file: File): Promise<Uint8Array> => {
   catalog.delete(PDFName.of('ViewerPreferences'));
   catalog.delete(PDFName.of('OpenAction'));
   catalog.delete(PDFName.of('AA'));
+};
+
+export const removePDFMetadata = async (file: File): Promise<Uint8Array> => {
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true } as any);
+
+  clearPDFMetadataAndCatalogActions(pdfDoc);
 
   return pdfDoc.save();
 };
@@ -372,11 +715,22 @@ export const removePDFAnnotations = async (file: File): Promise<Uint8Array> => {
 };
 
 export const sanitizePDF = async (file: File): Promise<Uint8Array> => {
-  const metadataCleaned = await removePDFMetadata(file);
-  const intermediate = new File([new Blob([metadataCleaned], { type: 'application/pdf' })], file.name, {
-    type: 'application/pdf',
+  const arrayBuffer = await readFileAsArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(arrayBuffer, {
+    ignoreEncryption: true,
+    updateMetadata: false,
   });
-  return removePDFAnnotations(intermediate);
+
+  for (const page of pdfDoc.getPages()) {
+    page.node.delete(PDFName.of('Annots'));
+    page.node.delete(PDFName.of('AA'));
+  }
+
+  // Loading a saved intermediate document makes pdf-lib stamp a new Producer/ModDate. Clear
+  // metadata after every structural mutation and save once so sanitize stays metadata-free.
+  clearPDFMetadataAndCatalogActions(pdfDoc);
+
+  return pdfDoc.save();
 };
 
 export interface CropBoxOptions {
@@ -537,70 +891,20 @@ export const removeBlankPagesFromPDF = async (
 };
 
 export const unlockPDF = async (file: File, password: string): Promise<Uint8Array> => {
-  const normalizedPassword = password.trim();
-  if (!normalizedPassword) {
-    throw new Error('Password is required.');
+  const exactPassword = password;
+  if (!exactPassword) {
+    throw new Error(UNLOCK_PASSWORD_REQUIRED_MESSAGE);
   }
 
-  const pdfDoc = await loadProtectedPDFDocument(file, normalizedPassword);
-  if (pdfDoc.numPages <= 0) {
-    throw new Error('PDF has no pages.');
-  }
-
-  const firstPage = await pdfDoc.getPage(1);
-  const firstViewport = firstPage.getViewport({ scale: 1 });
-  const firstOrientation = firstViewport.width > firstViewport.height ? 'landscape' : 'portrait';
-
-  const unlockedDoc = new jsPDF({
-    orientation: firstOrientation,
-    unit: 'pt',
-    format: [firstViewport.width, firstViewport.height],
-    putOnlyUsedFonts: true,
-    compress: true,
+  const input = new Uint8Array(await readFileAsArrayBuffer(file));
+  return decryptPdf(input, exactPassword).catch(() => {
+    throw new Error(UNLOCK_FAILED_MESSAGE);
   });
-
-  try {
-    for (let pageIndex = 0; pageIndex < pdfDoc.numPages; pageIndex += 1) {
-      const page = await pdfDoc.getPage(pageIndex + 1);
-      const viewport = page.getViewport({ scale: 1 });
-      const { objectUrl } = await renderPageAsImage(pdfDoc, pageIndex, {
-        format: 'image/jpeg',
-        quality: 0.92,
-        scale: 1.8,
-      });
-
-      try {
-        if (pageIndex > 0) {
-          const orientation = viewport.width > viewport.height ? 'landscape' : 'portrait';
-          unlockedDoc.addPage([viewport.width, viewport.height], orientation);
-        }
-
-        unlockedDoc.addImage(
-          objectUrl,
-          'JPEG',
-          0,
-          0,
-          viewport.width,
-          viewport.height,
-          undefined,
-          'FAST',
-        );
-      } finally {
-        revokeObjectUrl(objectUrl);
-      }
-    }
-  } finally {
-    if (typeof pdfDoc?.destroy === 'function') {
-      await pdfDoc.destroy();
-    }
-  }
-
-  return new Uint8Array(unlockedDoc.output('arraybuffer'));
 };
 
 export interface EditorElement {
   id: string;
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'rectangle' | 'ellipse' | 'line' | 'arrow';
   pageIndex: number;
   x: number;
   y: number;
@@ -610,7 +914,12 @@ export interface EditorElement {
   content: string;
   fontSize?: number;
   color?: string;
+  fillColor?: string;
+  strokeWidth?: number;
   fontFamily?: string;
+  fontWeight?: number;
+  fontStyle?: 'normal' | 'italic';
+  replacementSource?: TextReplacementSource;
 }
 
 export const savePDFWithAnnotations = async (
@@ -619,12 +928,47 @@ export const savePDFWithAnnotations = async (
   formValues: Record<string, PdfFormFieldValue> = {},
 ): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
-  const pdfDoc = await PDFDocument.load(arrayBuffer);
+  const directTextElements = elements.filter(
+    (element) => element.replacementSource?.saveMode === 'native'
+      && element.content !== element.replacementSource.text,
+  );
+  let sourceBytes = new Uint8Array(arrayBuffer);
+  if (directTextElements.length > 0) {
+    const { applyNativePdfTextEdits, releaseNativePdfTextDocument } = await import('./pdfNativeTextEditor');
+    await releaseNativePdfTextDocument(file);
+    sourceBytes = await applyNativePdfTextEdits(sourceBytes, directTextElements.map((element) => {
+      const source = element.replacementSource!;
+      if (!source.pdfRect) {
+        throw new Error('Direct text edit failed: the selected word has no PDF coordinates.');
+      }
+      return {
+        pageIndex: element.pageIndex,
+        sourceText: source.text,
+        replacementText: element.content,
+        pdfRect: source.pdfRect,
+        sourceRun: source.nativeSourceRun,
+      };
+    }));
+  }
+  const containsOnlyDirectText = directTextElements.length > 0
+    && elements.every((element) => element.replacementSource?.saveMode === 'native')
+    && Object.keys(formValues).length === 0;
+  if (containsOnlyDirectText) return sourceBytes;
+  const pdfDoc = await PDFDocument.load(sourceBytes);
   const pages = pdfDoc.getPages();
   const fonts = {
     Helvetica: await pdfDoc.embedFont(StandardFonts.Helvetica),
+    HelveticaBold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    HelveticaOblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
+    HelveticaBoldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
     TimesRoman: await pdfDoc.embedFont(StandardFonts.TimesRoman),
+    TimesRomanBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+    TimesRomanItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+    TimesRomanBoldItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
     Courier: await pdfDoc.embedFont(StandardFonts.Courier),
+    CourierBold: await pdfDoc.embedFont(StandardFonts.CourierBold),
+    CourierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
+    CourierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
   };
 
   const hexToRgb = (hex: string) => {
@@ -695,29 +1039,190 @@ export const savePDFWithAnnotations = async (
     }
   }
 
-  form.updateFieldAppearances(fonts.Helvetica);
+  try {
+    form.updateFieldAppearances(fonts.Helvetica);
+  } catch (error) {
+    // Some valid third-party forms omit /DA on one field. Preserve the document and the values we
+    // could set instead of refusing every edit because one pre-existing appearance is malformed.
+    console.warn('Some existing form appearances could not be refreshed.', error);
+  }
 
-  for (const element of elements) {
+  const visualTextRuns: Array<{ pageIndex: number; text: string; x: number; y: number }> = [];
+  for (const element of elements.filter(
+    (candidate) => candidate.replacementSource?.saveMode !== 'native' && candidate.replacementSource,
+  )) {
     if (element.pageIndex < 0 || element.pageIndex >= pages.length) continue;
     const page = pages[element.pageIndex];
-    const { width: pageWidth, height: pageHeight } = page.getSize();
-    const pdfX = element.x * pageWidth;
-    const pdfY = pageHeight - element.y * pageHeight;
+    const cropBox = page.getCropBox();
+    const geometry = {
+      cropX: cropBox.x,
+      cropY: cropBox.y,
+      cropWidth: cropBox.width,
+      cropHeight: cropBox.height,
+      rotation: normalizePageRotation(page.getRotation().angle),
+    };
+    const visualSize = getVisualPageSize(geometry);
+    const source = element.replacementSource!;
+    if (!source.visualEligible) {
+      throw new Error(source.visualUnavailableReason || 'Visual fallback is unavailable for this word.');
+    }
+    const sourcePreview = source.nativePreview ?? source;
+    const visualX = sourcePreview.x * visualSize.width;
+    const visualY = sourcePreview.y * visualSize.height;
+    const width = sourcePreview.width * visualSize.width;
+    const height = sourcePreview.height * visualSize.height;
+
+    if (source.backgroundMode === 'solid') {
+      const patch = visualRectangleToPdf(geometry, visualX, visualY, width, height);
+      page.drawRectangle({
+        ...patch,
+        color: hexToRgb(source.backgroundColor),
+      });
+      continue;
+    }
+
+    if (!sourcePreview.backgroundImage) {
+      throw new Error('Visual fallback cannot save this word without a safe background reconstruction.');
+    }
+    const background = await pdfDoc.embedPng(sourcePreview.backgroundImage);
+    const center = visualPointToPdf(geometry, visualX + width / 2, visualY + height / 2);
+    const origin = rotatedBoxOrigin(
+      center.x,
+      center.y,
+      width,
+      height,
+      geometry.rotation,
+    );
+    page.drawImage(background, {
+      x: origin.x,
+      y: origin.y,
+      width,
+      height,
+      rotate: degrees(geometry.rotation),
+    });
+  }
+
+  for (const element of elements) {
+    if (element.replacementSource?.saveMode === 'native') continue;
+    if (element.pageIndex < 0 || element.pageIndex >= pages.length) continue;
+    const page = pages[element.pageIndex];
+    const cropBox = page.getCropBox();
+    const geometry = {
+      cropX: cropBox.x,
+      cropY: cropBox.y,
+      cropWidth: cropBox.width,
+      cropHeight: cropBox.height,
+      rotation: normalizePageRotation(page.getRotation().angle),
+    };
+    const visualSize = getVisualPageSize(geometry);
+    const visualX = element.x * visualSize.width;
+    const visualY = element.y * visualSize.height;
+
+    if (element.type === 'rectangle' || element.type === 'ellipse' || element.type === 'line' || element.type === 'arrow') {
+      const width = Math.max(2, (element.width || 0.22) * visualSize.width);
+      const height = Math.max(2, (element.height || 0.12) * visualSize.height);
+      const borderColor = hexToRgb(element.color || '#2563eb');
+      const fillColor = element.fillColor && element.fillColor !== 'transparent'
+        ? hexToRgb(element.fillColor)
+        : undefined;
+      const borderWidth = Math.max(0.5, Math.min(16, element.strokeWidth || 2));
+
+      if (element.type === 'rectangle') {
+        const rotation = element.rotation || 0;
+        const center = visualPointToPdf(
+          geometry,
+          visualX + width / 2,
+          visualY + height / 2,
+        );
+        const origin = rotatedBoxOrigin(
+          center.x,
+          center.y,
+          width,
+          height,
+          geometry.rotation + rotation,
+        );
+        page.drawRectangle({
+          x: origin.x,
+          y: origin.y,
+          width,
+          height,
+          borderColor,
+          borderWidth,
+          color: fillColor,
+          opacity: fillColor ? 0.22 : undefined,
+          rotate: degrees(geometry.rotation + rotation),
+        });
+        continue;
+      }
+
+      if (element.type === 'ellipse') {
+        const center = visualPointToPdf(
+          geometry,
+          visualX + width / 2,
+          visualY + height / 2,
+        );
+        page.drawEllipse({
+          x: center.x,
+          y: center.y,
+          xScale: width / 2,
+          yScale: height / 2,
+          borderColor,
+          borderWidth,
+          color: fillColor,
+          opacity: fillColor ? 0.22 : undefined,
+          rotate: degrees(geometry.rotation + (element.rotation || 0)),
+        });
+        continue;
+      }
+
+      const start = visualPointToPdf(geometry, visualX, visualY);
+      const end = visualPointToPdf(geometry, visualX + width, visualY + height);
+      page.drawLine({ start, end, thickness: borderWidth, color: borderColor });
+      if (element.type === 'arrow') {
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+        const headLength = Math.max(8, Math.min(24, width * 0.12));
+        [Math.PI * 0.82, -Math.PI * 0.82].forEach((offset) => {
+          page.drawLine({
+            start: end,
+            end: {
+              x: end.x + Math.cos(angle + offset) * headLength,
+              y: end.y + Math.sin(angle + offset) * headLength,
+            },
+            thickness: borderWidth,
+            color: borderColor,
+          });
+        });
+      }
+      continue;
+    }
 
     if (element.type === 'image') {
       try {
         const image = element.content.startsWith('data:image/png')
           ? await pdfDoc.embedPng(element.content)
           : await pdfDoc.embedJpg(element.content);
-        const width = (element.width || 0.2) * pageWidth;
-        const height = (element.height || 0.2) * pageHeight;
-
-        page.drawImage(image, {
-          x: pdfX,
-          y: pdfY - height,
+        const width = (element.width || 0.2) * visualSize.width;
+        const height = (element.height || 0.2) * visualSize.height;
+        const rotation = element.rotation || 0;
+        const center = visualPointToPdf(
+          geometry,
+          visualX + width / 2,
+          visualY + height / 2,
+        );
+        const origin = rotatedBoxOrigin(
+          center.x,
+          center.y,
           width,
           height,
-          rotate: degrees(element.rotation || 0),
+          geometry.rotation + rotation,
+        );
+
+        page.drawImage(image, {
+          x: origin.x,
+          y: origin.y,
+          width,
+          height,
+          rotate: degrees(geometry.rotation + rotation),
         });
       } catch (error) {
         console.warn('Failed to embed image', error);
@@ -725,23 +1230,66 @@ export const savePDFWithAnnotations = async (
       continue;
     }
 
-    const font = fonts[element.fontFamily as keyof typeof fonts] || fonts.Helvetica;
+    const fontFamily = element.fontFamily === 'TimesRoman'
+      ? 'TimesRoman'
+      : element.fontFamily === 'Courier'
+        ? 'Courier'
+        : 'Helvetica';
+    const isBold = (element.fontWeight ?? 400) >= 600;
+    const isItalic = element.fontStyle === 'italic';
+    const fontKey = fontFamily === 'TimesRoman'
+      ? isBold && isItalic ? 'TimesRomanBoldItalic' : isBold ? 'TimesRomanBold' : isItalic ? 'TimesRomanItalic' : 'TimesRoman'
+      : fontFamily === 'Courier'
+        ? isBold && isItalic ? 'CourierBoldOblique' : isBold ? 'CourierBold' : isItalic ? 'CourierOblique' : 'Courier'
+        : isBold && isItalic ? 'HelveticaBoldOblique' : isBold ? 'HelveticaBold' : isItalic ? 'HelveticaOblique' : 'Helvetica';
+    const font = fonts[fontKey];
     const size = element.fontSize || 12;
-    const lines = element.content.split('\n');
+    const textContent = element.replacementSource?.saveMode === 'visual'
+      ? element.content + (element.replacementSource.nativePreview?.suffix ?? '')
+      : element.content;
+    const lines = textContent.split('\n');
     const lineHeight = size * 1.2;
+    const width = (element.width || 0.24) * visualSize.width;
+    const height = (element.height || 0.07) * visualSize.height;
+    const center = visualPointToPdf(
+      geometry,
+      visualX + width / 2,
+      visualY + height / 2,
+    );
+    const rotation = element.rotation || 0;
     lines.forEach((line, index) => {
+      const baseline = visualPointToPdf(
+        geometry,
+        visualX,
+        visualY + size + index * lineHeight,
+      );
+      const origin = rotatePointAroundCenter(
+        baseline.x,
+        baseline.y,
+        center.x,
+        center.y,
+        rotation,
+      );
+      if (element.replacementSource?.saveMode === 'visual' && line.trim()) {
+        visualTextRuns.push({ pageIndex: element.pageIndex, text: line, x: origin.x, y: origin.y });
+      }
       page.drawText(line, {
-        x: pdfX,
-        y: pdfY - size - index * lineHeight,
+        x: origin.x,
+        y: origin.y,
         size,
         font,
         color: element.color ? hexToRgb(element.color) : rgb(0, 0, 0),
-        rotate: degrees(element.rotation || 0),
+        rotate: degrees(geometry.rotation + rotation),
       });
     });
   }
 
-  return pdfDoc.save();
+  const output = await pdfDoc.save();
+  if (visualTextRuns.length > 0) {
+    const { verifyPdfTextRunsFitWithinPage } = await import('./pdfNativeTextEditor');
+    await verifyPdfTextRunsFitWithinPage(output, visualTextRuns);
+  }
+  return output;
 };
 
 export interface SignaturePlacement {
@@ -801,42 +1349,65 @@ export interface WatermarkOptions {
   opacity: number;
   rotation: number;
   color: string;
+  /** Fraction of the page width, 0-1, as in the Android option string (`x=0.5000`). */
   xPercent?: number;
+  /** Fraction of the page height measured from the *bottom*, as in PDF user space. */
   yPercent?: number;
 }
 
+/**
+ * `WatermarkPdfToolProcessor` in the Android app.
+ *
+ * Geometry comes from the shared `watermarkLayout`, including its rotated-bounding-box clamp, and
+ * the glyph origin is pre-rotated so pdf-lib turns the mark about its centre. Drawing at the
+ * centre and letting pdf-lib rotate about that origin would swing the text off the anchor the
+ * preview shows, which is exactly the drift this path used to have.
+ */
 export const addWatermarkToPDF = async (file: File, options: WatermarkOptions): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const text = options.text.trim();
-  const fontSize = Math.max(8, Math.min(160, Number.isFinite(options.size) ? options.size : 48));
-  const opacity = Math.max(0.05, Math.min(1, Number.isFinite(options.opacity) ? options.opacity : 0.3));
-  const rotation = Number.isFinite(options.rotation) ? options.rotation : -45;
-  const color = parseHexColor(options.color);
-  const xPercent = Math.max(2, Math.min(98, Number.isFinite(options.xPercent) ? Number(options.xPercent) : 50));
-  const yPercent = Math.max(2, Math.min(98, Number.isFinite(options.yPercent) ? Number(options.yPercent) : 50));
-
-  if (!text) {
-    return pdfDoc.save();
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
   }
 
-  for (const page of pdfDoc.getPages()) {
-    const { width, height } = page.getSize();
-    const textWidth = font.widthOfTextAtSize(text, fontSize);
-    const desiredX = (width * (xPercent / 100)) - textWidth / 2;
-    const desiredY = (height * (1 - yPercent / 100)) - fontSize / 2;
-    const x = Math.max(8, Math.min(width - textWidth - 8, desiredX));
-    const y = Math.max(8, Math.min(height - fontSize - 8, desiredY));
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const opacity = Math.max(0.05, Math.min(1, Number.isFinite(options.opacity) ? options.opacity : 0.3));
+  const rotation = Math.max(
+    WATERMARK_MIN_ROTATION_DEGREES,
+    Math.min(
+      WATERMARK_MAX_ROTATION_DEGREES,
+      Number.isFinite(options.rotation) ? options.rotation : DEFAULT_WATERMARK_ROTATION_DEGREES,
+    ),
+  );
+  const color = parseHexColor(options.color || DEFAULT_WATERMARK_COLOR_HEX);
+  const measureTextWidth = (text: string, fontSize: number) => font.widthOfTextAtSize(text, fontSize);
 
-    page.drawText(text, {
-      x,
-      y,
-      size: fontSize,
+  for (const page of pages) {
+    const { width, height } = page.getSize();
+    const layout = watermarkLayout({
+      pageWidth: width,
+      pageHeight: height,
+      text: options.text,
+      fontSize: Number.isFinite(options.size) ? options.size : DEFAULT_WATERMARK_SIZE,
+      rotationDegrees: rotation,
+      placement: {
+        xPercent: Number.isFinite(options.xPercent) ? Number(options.xPercent) : DEFAULT_WATERMARK_X_PERCENT,
+        yPercent: Number.isFinite(options.yPercent) ? Number(options.yPercent) : DEFAULT_WATERMARK_Y_PERCENT,
+      },
+      measureTextWidth,
+    });
+    if (!layout) continue;
+
+    const origin = rotatedTextOrigin(layout);
+    page.drawText(layout.text, {
+      x: origin.x,
+      y: origin.y,
+      size: layout.fontSize,
       font,
       color,
       opacity,
-      rotate: degrees(rotation),
+      rotate: degrees(layout.rotationDegrees),
     });
   }
 
@@ -846,50 +1417,62 @@ export const addWatermarkToPDF = async (file: File, options: WatermarkOptions): 
 export interface PageNumberOptions {
   format: string;
   fontSize: number;
+  /** Fraction of the page width, 0-1. */
   xPercent: number;
+  /** Fraction of the page height measured from the *bottom*, as in PDF user space. */
   yPercent: number;
   startPage: number;
   endPage: number;
 }
 
-const buildPageNumberLabel = (format: string, pageNumber: number, totalPages: number) => {
-  const trimmed = format.trim();
-  if (!trimmed) {
-    return `Page ${pageNumber}`;
-  }
-  if (trimmed.includes('{n}') || trimmed.includes('{total}')) {
-    return trimmed.replaceAll('{n}', String(pageNumber)).replaceAll('{total}', String(totalPages));
-  }
-  if (/\d+/.test(trimmed)) {
-    return trimmed.replace(/\d+/, String(pageNumber));
-  }
-  return `${trimmed} ${pageNumber}`;
-};
-
+/**
+ * `PageNumbersToolProcessor` in the Android app: Helvetica at 30% grey, placed by the shared
+ * `pageNumberLayout` so the label is centred on the anchor and clamped by its own measured box
+ * rather than by a fixed 8pt margin.
+ */
 export const addPageNumbersToPDF = async (file: File, options: PageNumberOptions): Promise<Uint8Array> => {
   const arrayBuffer = await readFileAsArrayBuffer(file);
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pages = pdfDoc.getPages();
   const totalPages = pages.length;
-  const fontSize = Math.max(8, Math.min(72, Number.isFinite(options.fontSize) ? options.fontSize : 10));
-  const normalizedX = Math.max(0.02, Math.min(0.98, Number.isFinite(options.xPercent) ? options.xPercent : 0.5));
-  const normalizedY = Math.max(0.02, Math.min(0.98, Number.isFinite(options.yPercent) ? options.yPercent : 0.05));
-  const startPage = Math.max(1, Math.min(totalPages, Math.floor(options.startPage || 1)));
-  const endPage = Math.max(startPage, Math.min(totalPages, Math.floor(options.endPage || totalPages)));
+  if (totalPages === 0) {
+    throw new Error(NO_PAGES_MESSAGE);
+  }
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const measureTextWidth = (text: string, size: number) => font.widthOfTextAtSize(text, size);
+  const fontSize = sanitizePageNumberFontSize(
+    Number.isFinite(options.fontSize) ? options.fontSize : DEFAULT_PAGE_NUMBER_FONT_SIZE,
+  );
+  const placement = {
+    xPercent: Number.isFinite(options.xPercent) ? options.xPercent : DEFAULT_PAGE_NUMBER_X_PERCENT,
+    yPercent: Number.isFinite(options.yPercent) ? options.yPercent : DEFAULT_PAGE_NUMBER_Y_PERCENT,
+  };
+  const { startPage, endPage } = resolvePageNumberRange(
+    Number.isFinite(options.startPage) ? Math.floor(options.startPage) : null,
+    Number.isFinite(options.endPage) ? Math.floor(options.endPage) : null,
+    totalPages,
+  );
 
   pages.forEach((page, index) => {
     const pageNumber = index + 1;
     if (pageNumber < startPage || pageNumber > endPage) return;
-    const label = buildPageNumberLabel(options.format, pageNumber, totalPages);
+
     const { width, height } = page.getSize();
-    const textWidth = font.widthOfTextAtSize(label, fontSize);
-    const x = (width * normalizedX) - textWidth / 2;
-    const y = height * normalizedY;
-    page.drawText(label, {
-      x: Math.max(8, Math.min(width - textWidth - 8, x)),
-      y: Math.max(8, Math.min(height - fontSize - 8, y)),
-      size: fontSize,
+    const layout = pageNumberLayout({
+      pageWidth: width,
+      pageHeight: height,
+      text: buildPageNumberText(options.format, pageNumber, totalPages),
+      placement,
+      fontSize,
+      measureTextWidth,
+    });
+    if (!layout) return;
+
+    page.drawText(layout.text, {
+      x: layout.baselineX,
+      y: layout.baselineY,
+      size: layout.fontSize,
       font,
       color: rgb(0.3, 0.3, 0.3),
     });

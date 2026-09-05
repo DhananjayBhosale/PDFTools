@@ -1,0 +1,1467 @@
+# GoalBuddy v2 state.yaml
+version: 2
+
+goal:
+  title: "PDF Chef iOS Production-Ready Application"
+  slug: "pdf-chef-ios"
+  kind: existing_plan
+  tranche: "Complete successive safe verified design and engineering slices until the full iOS outcome is proven."
+  status: done
+  intake:
+    original_request: "Create and open a local live GoalBuddy board, then autonomously complete PDF Chef iOS through final audits."
+    interpreted_outcome: "A polished, private, offline React/Capacitor PDF Chef iOS app with Claude-owned UI and Codex-owned engineering is installed, launched, tested, and independently accepted."
+    input_shape: existing_plan
+    audience: "iPhone and iPad users handling sensitive PDF documents"
+    authority: approved
+    proof_type: demo
+    completion_proof: "Claude Opus 5 High UI acceptance plus Codex engineering acceptance backed by simulator, persistence, offline, functional, automated, responsive, accessibility, and unchanged-Android evidence."
+    likely_misfire: "Stopping after planning or build success, letting Codex make UI decisions, using remote or temporary assets, or claiming verification that was not performed."
+    blind_spots_considered:
+      - "Exact Claude Code Opus 5 High availability and authenticated model evidence."
+      - "Non-Git checkout requires file manifests and hashes instead of commit evidence."
+      - "Simulator, share-sheet, offline OCR/PDF assets, iPad, and accessibility test availability."
+      - "Pre-existing PDF algorithm defects may require explicit DEFERRED classification."
+    existing_plan_facts:
+      - "Strict Claude UI owner and Codex engineering owner."
+      - "React/Vite shared source with Capacitor iOS; no SwiftUI rewrite."
+      - "Home, Recent, and Settings with persistent local files and metadata."
+      - "Typed web and iOS platform interfaces suitable for future Capacitor Android."
+      - "Exact automated, web, iOS sync, simulator, offline, PDF flow, screenshot, accessibility, and final-audit gates."
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  parallel_write_exception: null
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+  continuous_until_full_outcome: true
+  missing_input_or_credentials_do_not_stop_goal: true
+  preserve_and_validate_existing_plan: true
+  intake_misfire_must_be_audited: true
+  strict_two_owner_model: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+  claude_ui_owner:
+    required_model: "Claude Code Opus 5 High"
+    status: authenticated_running
+    evidence:
+      cli_version: "2.1.251"
+      resolved_model: "claude-opus-5"
+      effort: high
+      permission_mode: acceptEdits
+      session_id: "0bf4c2f4-885c-4904-9557-7363dc854681"
+      command: "claude -p --model opus --effort high --permission-mode acceptEdits --name pdf-chef-ios-ui-opus5 --output-format stream-json --verbose"
+
+visual_board:
+  selected: local
+  local:
+    status: live
+    url: "http://127.0.0.1:41737/"
+    command: "node /Users/dhananjaybhosale/.codex/skills/goalbuddy/extend/local-goal-board/scripts/local-goal-board.mjs --goal docs/goals/pdf-chef-ios"
+  github_projects:
+    status: not_requested
+    url: null
+    command: "npx goalbuddy extend github-projects"
+    missing: []
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: medium
+    objective: "Map the current React/Vite and Capacitor iOS project, its existing product/design contracts, tool inventory, tests, build commands, offline assets, and non-Git baseline without editing product files."
+    inputs:
+      - "Repository root"
+      - "PRODUCT.md"
+      - "DESIGN.md"
+      - "package.json"
+      - "ios/"
+      - "Existing tests and build configuration"
+      - "Read-only Android reference only when needed for behavioral comparison"
+    constraints:
+      - "Read-only."
+      - "Do not inspect the Android reference unless a specific behavioral gap requires it."
+      - "Do not edit implementation, design, or native files."
+      - "Generate a path/hash baseline without initializing Git."
+    expected_output:
+      - "Architecture and ownership map"
+      - "Existing tool and feature inventory"
+      - "Verification commands and environment prerequisites"
+      - "Offline asset and native readiness gaps"
+      - "Proposed non-overlapping Claude and Codex file ownership"
+      - "Candidate next tasks"
+    receipt:
+      result: done
+      summary: "Five parallel read-only scouts mapped the non-Git React/Vite and Capacitor iOS checkout. The app exposes 34 local PDF tools and bundles PDF.js, QPDF WASM, OCR assets, and fonts. The iOS shell is present and has no remote server URL, but native file/persistence/export/share/haptics adapters, complete settings/history contracts, privacy/document declarations, unit tests, and runtime offline proof are missing. No product files, builds, dependencies, or Android sources were touched."
+      evidence:
+        - "PRODUCT.md"
+        - "DESIGN.md"
+        - "App.tsx"
+        - "components/Tools/toolCatalog.ts"
+        - "services/workspace.ts"
+        - "services/pdfShared.ts"
+        - "services/pdfBrowser.ts"
+        - "services/qpdfBrowser.ts"
+        - "scripts/prepare-local-assets.mjs"
+        - "public/sw.js"
+        - "capacitor.config.ts"
+        - "ios/App/App/Info.plist"
+        - "ios/App/App.xcodeproj/project.pbxproj"
+        - "ios/App/CapApp-SPM/Package.swift"
+      findings:
+        - "Current stack: React 18, Vite 6, TypeScript 5.8, Capacitor 8.5, iOS 15+, iPhone and iPad targets."
+        - "Current persistence is localStorage plus IndexedDB blobs capped at 50; it lacks durable native file references, per-record input/output/space-saved fields, rename/reopen/share/missing-file behavior, independent clear operations, and full settings."
+        - "No Capacitor native plugins or custom native bridges implement required platform services."
+        - "Offline assets are statically bundled, but network-disabled simulator execution of OCR, PDF.js, QPDF, fonts, and WASM is not checked."
+        - "No PrivacyInfo.xcprivacy, document declarations, native test target, or unit-test framework exists."
+        - "Current TSX files mix presentation and orchestration; stable service contracts must precede Claude-exclusive TSX work, and Codex must not later patch visible components."
+        - "Xcode 26.2, iOS 26.3 simulators, Node 24.5, npm 11.5, node_modules, and cached Capacitor SPM dependencies are available."
+        - "Disk headroom is about 14 GiB and should be monitored during simulator builds."
+      baseline:
+        kind: "non-git aggregate source hash"
+        sha256: "d7919d075cbfaed0865b38c99b39bc2638999bbc336e05e22720df62f0893680"
+        files: 280
+        exclusions: "node_modules, dist, output, GoalBuddy files, .DS_Store"
+      ownership_proposal:
+        claude: "App.tsx and visible React components/hooks/styles/design-system/brand/tokens/artwork, with hybrid files serialized wholly to Claude after contracts are stable."
+        codex: "services, new domain/platform/persistence/tests, package/build configs, offline scripts/assets, ios native/config/project files, generated sync, and mechanical wiring of Claude-approved artwork."
+      ambiguities_for_judge:
+        - "Permanent Claude ownership of all TSX integration versus any later line-level Codex wiring."
+        - "Native sandbox file retention versus interim IndexedDB blobs."
+        - "Existing localStorage/IndexedDB migration policy."
+        - "Official Capacitor plugins versus custom Swift bridges."
+        - "Picker-only versus Open-In declarations and copy-in versus in-place access."
+        - "Web-only service worker behavior inside Capacitor."
+        - "Exact Brand skill path is provided by the objective and must not be silently substituted."
+        - "All 34 web tools are the canonical Home inventory."
+      spawned_tasks:
+        - T002
+        - T003
+        - T004
+        - T005
+        - T006
+        - T007
+        - T008
+        - T009
+
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Validate the supplied plan against T001 evidence, resolve ownership boundaries, sequence safe work, and define exact Claude and Codex task scopes."
+    inputs:
+      - "T001 receipt"
+      - "Goal charter"
+      - "Original objective"
+    constraints:
+      - "Read-only."
+      - "Do not substitute any model for Claude Code Opus 5 High."
+      - "Do not allow overlapping writes."
+    expected_output:
+      - "Plan verdict"
+      - "Claude-owned file scope"
+      - "Codex-owned file scope"
+      - "Ordered safe tasks with verification and stop conditions"
+      - "Blocked and deferred risks"
+    receipt:
+      result: done
+      decision: "CONDITIONALLY APPROVED. Keep permanent file ownership, stabilize new-file-only nonvisual contracts first, then let authenticated Claude Code Opus 5 High exclusively own every visible frontend and call-site change."
+      next_allowed_task: T004
+      full_outcome_complete: false
+      ownership:
+        claude_permanent:
+          - "App.tsx"
+          - "index.tsx"
+          - "index.html"
+          - "index.css"
+          - "components/**"
+          - "hooks/**"
+          - "types.ts"
+          - "services/toolSearch.ts"
+          - "lib/framer-motion-shim.tsx"
+          - "design-system/**"
+          - "docs/brand-guidelines.md"
+          - "assets/design-tokens.json"
+          - "assets/design-tokens.css"
+          - "assets/brand/**"
+          - "public/logo.svg"
+          - "public/favicon.svg"
+          - "public/og-image.svg"
+          - "public/site.webmanifest"
+          - "tailwind.config.cjs"
+        codex_permanent:
+          - "services/** except services/toolSearch.ts"
+          - "runtime/**"
+          - "tests/**"
+          - "scripts/**"
+          - "package.json"
+          - "package-lock.json"
+          - "capacitor.config.ts"
+          - "vite.config.ts"
+          - "tsconfig.json"
+          - "public/sw.js"
+          - "ios/**"
+        generated_never_direct_edit:
+          - "dist/**"
+          - "ios/App/App/public/**"
+      architecture:
+        contracts: "Small async TypeScript interfaces; durable references are opaque IDs, never blob URLs, absolute sandbox paths, provider URLs, or externally meaningful file URLs."
+        plugins: "Use official Capacitor Preferences, Share, Haptics, and App where their bounded capabilities fit."
+        native_bridge: "Use one local Swift PdfChefDocuments bridge for picker/Open-In intake, chunked or file-backed writes, atomic retained storage, reopen, rename, delete, clear, usage/stat, pending import, and export picker."
+        retained_storage: "Copy into Application Support/PDFChef, exclude from backup, verify size/hash, then atomically rename before metadata commit."
+        migration: "Idempotent settings migration; separate StoredDocument and RecentEntry lifecycles; preserve unknown legacy sizes as null; journal IndexedDB blob migration; never delete legacy data on partial failure."
+        document_policy: "Copy-in only; PDF-only Open-In declaration; in-app picker may accept tool-relevant PDF/image/DOCX/PPTX; do not expose Files-app container or edit provider originals in place."
+        service_worker: "Web/PWA only. Native offline proof comes from bundled assets and network-disabled simulator execution."
+      blocked_tasks:
+        - "T005 and T013 until exact authenticated Claude Code Opus 5 High evidence and required skill receipts exist."
+        - "T006-T009 until T004 contracts pass review."
+        - "Any Codex edit to Claude-owned frontend files."
+        - "In-place provider editing, community picker adoption, or whole-file native base64 transfers."
+        - "Direct edits to generated dist or ios public payloads."
+
+  - id: T003
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: medium
+    objective: "Authenticate and start exact Claude Code Opus 5 High, provide its required skills and bounded UI ownership packet, and record model/session evidence."
+    inputs:
+      - "T002 decision"
+      - "Apple Design skill"
+      - "Impeccable skill"
+      - "Brand skill"
+      - "PRODUCT.md"
+      - "DESIGN.md"
+    constraints:
+      - "Do not claim Claude ownership without actual authenticated output."
+      - "Claude writes only its assigned frontend/design files."
+      - "If unavailable, block this task and continue safe Codex engineering."
+    expected_output:
+      - "Exact model and authentication evidence"
+      - "Stable Claude session identifier"
+      - "Claude acknowledgment of required skills and file scope"
+      - "UI implementation plan owned by Claude"
+    receipt:
+      result: done
+      summary: "Authenticated Claude Code 2.1.251 ran exact claude-opus-5 with launcher effort high and acceptEdits in stable session 0bf4c2f4-885c-4904-9557-7363dc854681. Claude read Apple Design, Impeccable plus its required product reference, the exact Brand skill, PRODUCT.md, DESIGN.md, current goal/state, and accepted Codex contracts; it also ran Impeccable's full context loader."
+      evidence:
+        model: "claude-opus-5"
+        session_id: "0bf4c2f4-885c-4904-9557-7363dc854681"
+        cli_version: "2.1.251"
+        effort: "launcher-set high"
+        permission_mode: "acceptEdits"
+        api_key_source: "none"
+        primary_cost_usd: 10.3774945
+        correction_cost_usd: 4.0126005
+      audit:
+        result: accept
+        note: "Harness stream independently exposed exact model, session, permission mode, and successful terminal result; Claude explicitly acknowledged every required skill and permanent ownership boundary."
+
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Create platform-neutral contracts, workspace models, migration rules, and pure tests without changing any existing file."
+    allowed_files:
+      - "services/platform/contracts.ts"
+      - "services/domain/workspaceModels.ts"
+      - "services/domain/workspacePolicy.ts"
+      - "services/domain/workspaceMigration.ts"
+      - "tests/domain/workspacePolicy.test.ts"
+      - "tests/domain/workspaceMigration.test.ts"
+    verify:
+      - "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts"
+      - "npm run lint"
+      - "! rg -n 'blob:|https?://|file://' services/platform/contracts.ts services/domain"
+    stop_if:
+      - "Any existing file must be modified."
+      - "A visible default, copy, layout, interaction, search, filename, or haptic decision is required."
+      - "A durable reference exposes blob:, file://, an absolute sandbox path, or a provider URL."
+      - "Legacy unknown fields would be guessed instead of represented as null or unknown."
+      - "Tests require a new dependency."
+      - "Any file outside allowed_files is needed."
+      - "The same verification failure remains after two focused attempts."
+    receipt:
+      result: done
+      changed_files:
+        - "services/platform/contracts.ts"
+        - "services/domain/workspaceModels.ts"
+        - "services/domain/workspacePolicy.ts"
+        - "services/domain/workspaceMigration.ts"
+        - "tests/domain/workspacePolicy.test.ts"
+        - "tests/domain/workspaceMigration.test.ts"
+      summary: "Added accepted platform-neutral async ports, distinct recent/retained lifecycles, constrained opaque document IDs, explicit legacy unknowns, nonnegative savings, and idempotent journal reconciliation. Only six approved new files changed."
+      hashes:
+        contracts: "76d2e0f293402e5c388cc19add65304e646752b74e811946d01cf3ec0509e4e6"
+        models: "1efcfd71f9c6fb607d968f819ae9d47256d4cc1835d2cea5497dcb7ec7340662"
+        policy: "bb504ad27e96c83295e8ff5be0f6098c3ca8d5581bfc16ec3d31bfb4cd2e58ef"
+        migration: "62222e1350ad761aac39a2c55a84c874dd1d6b607d0d24b732b78141d9f520a1"
+        policy_test: "1f214e901ba1cfc89c73ddc60411dc5688e6bf915cfa049177d5131dfb2da1cc"
+        migration_test: "2349e672eba6f4849767f358e11b4edca9e0a2622a718bafe0bf7dde41740079"
+      commands:
+        - cmd: "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts"
+          status: pass
+          detail: "10 tests passed"
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "! rg -n 'blob:|https?://|file://' services/platform/contracts.ts services/domain"
+          status: pass
+      audit:
+        result: accept
+        tests: "10/10 passed"
+        lint: pass
+        forbidden_reference_scan: pass
+        scope_integrity: "Before/after manifests each contain 281 identical pre-existing file hashes and share SHA-256 4c0357e440b02547935b2e59052f4fc8d0a5f13dcb00c581a1ddf240136763ea."
+        package_json: "e43657ada8e5a4ea0904aaa03156e44630b0a7f89aa9de183dd269c5e69df2b5"
+        package_lock: "f82fef21d74cbe16e599620779799e31a8b943a2dacbd1e453db52f80ec4f925"
+
+  - id: T005
+    type: worker
+    assignee: Worker
+    external_owner: "Claude Code Opus 5 High"
+    status: done
+    reasoning_hint: high
+    objective: "Create the brand system and complete React frontend for Home, Recent, Settings, onboarding, all states, responsive layouts, accessibility presentation, interactions, motion, haptic design, app icon, and launch artwork."
+    allowed_files:
+      - "App.tsx"
+      - "index.tsx"
+      - "index.html"
+      - "index.css"
+      - "components/**"
+      - "hooks/**"
+      - "tailwind.config.cjs"
+      - "assets/design-tokens.json"
+      - "assets/design-tokens.css"
+      - "assets/brand/**"
+      - "design-system/**"
+      - "docs/brand-guidelines.md"
+      - "public/logo.svg"
+      - "public/favicon.svg"
+      - "public/og-image.svg"
+      - "public/site.webmanifest"
+    verify: []
+    stop_if:
+      - "Exact Claude Code Opus 5 High identity or authentication is unproven."
+      - "Required skills, PRODUCT.md, or DESIGN.md were not read completely."
+      - "Need files outside T002-approved Claude scope."
+      - "A requirement conflicts with a non-visual typed contract; return it to PM for resolution."
+    receipt:
+      result: done
+      summary: "Claude Opus 5 exclusively implemented the visible PDF Chef brand, responsive application shell, Tools/Recent/Settings tabs, onboarding, output states, accessibility presentation, motion, haptic vocabulary, artwork, and durable design documentation. A follow-up in the same authenticated session fixed the browser Recent availability defect, nullable legacy presentation, injected clear behavior, truthful result retention, fresh save/share seams, and the AppRoot native injection prop."
+      changed_scope:
+        - "App.tsx, index.tsx, index.html, index.css"
+        - "components/** and hooks/**"
+        - "tailwind.config.cjs"
+        - "assets/design-tokens.json and assets/design-tokens.css"
+        - "assets/brand/** and approved public brand assets"
+        - "design-system/** and docs/brand-guidelines.md"
+      changed_files:
+        - "App.tsx"
+        - "index.tsx"
+        - "index.html"
+        - "index.css"
+        - "components/**"
+        - "hooks/**"
+        - "tailwind.config.cjs"
+        - "assets/design-tokens.json"
+        - "assets/design-tokens.css"
+        - "assets/brand/**"
+        - "design-system/**"
+        - "docs/brand-guidelines.md"
+        - "public/logo.svg"
+        - "public/favicon.svg"
+        - "public/og-image.svg"
+        - "public/site.webmanifest"
+      commands:
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "npm run test:catalog"
+          status: pass
+          detail: "34 tools, 44 routes, 40 sitemap entries"
+        - cmd: "npm run build"
+          status: pass
+          detail: "147 offline assets injected; only pre-existing large-chunk warning"
+      audit:
+        result: accept
+        owner: "PM plus four read-only post-handoff audits"
+        corrections: "All identified P0/P1 UI-owned integration defects were returned to and fixed by the same Claude Opus 5 session."
+        remaining_gate: "Final simulator screenshot review remains T013."
+
+  - id: T006
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Implement the native retained-document store, metadata manifest, persistent Open-In inbox queue, Capacitor plugin bridge, crash recovery, and executable native tests behind approved contracts. Settings persistence, the TypeScript adapter, picker/export/share, and visible integration remain T007 or later."
+    allowed_files:
+      - "services/platform/contracts.ts"
+      - "services/domain/workspaceModels.ts"
+      - "tests/domain/workspacePolicy.test.ts"
+      - "ios/App/App/PdfChefDocumentStore.swift"
+      - "ios/App/App/PdfChefDocumentInbox.swift"
+      - "ios/App/App/PdfChefDocumentsPlugin.swift"
+      - "ios/App/App/PdfChefBridgeViewController.swift"
+      - "ios/App/App/SceneDelegate.swift"
+      - "ios/App/App.xcodeproj/project.pbxproj"
+      - "ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme"
+      - "ios/App/AppTests/PdfChefDocumentStoreTests.swift"
+    verify:
+      - "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts"
+      - "npm run lint"
+      - "xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' CODE_SIGNING_ALLOWED=NO build"
+      - "xcodebuild test -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' CODE_SIGNING_ALLOWED=NO -only-testing:AppTests/PdfChefDocumentStoreTests"
+    stop_if:
+      - "Required contracts are not accepted."
+      - "A visible behavior or copy change is needed."
+      - "Need files outside allowed_files."
+      - "Verification fails twice for the same reason."
+    receipt:
+      result: done
+      summary: "Implemented and independently accepted the native retained-document substrate: protected Application Support storage, bounded chunk IO, verified atomic commits, journaled recovery, persistent peek/ack Open-In delivery, stable path-safe bridge errors, exact opaque references, live Capacitor registration, and an executable hosted XCTest target. No settings, picker/export/share, UI integration, or production-readiness claim is included."
+      changed_files:
+        - "services/platform/contracts.ts"
+        - "services/domain/workspaceModels.ts"
+        - "tests/domain/workspacePolicy.test.ts"
+        - "ios/App/App/PdfChefDocumentStore.swift"
+        - "ios/App/App/PdfChefDocumentInbox.swift"
+        - "ios/App/App/PdfChefDocumentsPlugin.swift"
+        - "ios/App/App/PdfChefBridgeViewController.swift"
+        - "ios/App/App/SceneDelegate.swift"
+        - "ios/App/App.xcodeproj/project.pbxproj"
+        - "ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme"
+        - "ios/App/AppTests/PdfChefDocumentStoreTests.swift"
+      commands:
+        - cmd: "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts"
+          status: pass
+          detail: "10/10 tests"
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "xcodebuild test -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t006-independent CODE_SIGNING_ALLOWED=NO -only-testing:AppTests/PdfChefDocumentStoreTests"
+          status: pass
+          detail: "11/11 tests; App and AppTests built on fixed iPhone 17 Pro simulator"
+        - cmd: "plutil -lint ios/App/App.xcodeproj/project.pbxproj && xmllint --noout ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme"
+          status: pass
+      audit:
+        result: accept
+        reviewer: "Independent T006 acceptance review"
+        corrections: "Closed journal ordering, unsafe numeric conversion, cold/warm Open-In delivery, raw error leakage, plugin registration, Xcode membership, and opaque-ref parity findings before acceptance."
+        scope_integrity: "Only the eleven allowlisted implementation files changed; PM updated state.yaml separately."
+        before_manifest: "/tmp/pdf-chef-ios-t006-before.sha256"
+        before_manifest_sha256: "39d01a85e483e13ff7b1a145dae6cccf67b08a6d324f505979e3c9ebdeef9faa"
+        after_manifest: "/tmp/pdf-chef-ios-t006-after.sha256"
+        after_manifest_sha256: "7397203b82a3888b0a160c3cf8ab06e59a277947bc628ad1ad1c6c1b26735551"
+        deferred: "JS platform adapter and persistence, picker/export/share, settings, application metadata, Info.plist document declarations, and visible injection remain T007 or later."
+
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Implement the Codex-owned Capacitor iOS adapter, local settings/recent repositories, retained-document listing, copy-in picker, export/share presentation, haptics, storage information, application metadata, and crash-safe pending-import acknowledgement. Do not edit Claude-owned React files; native activation in index.tsx remains a tiny Claude follow-up after this tranche verifies."
+    allowed_files:
+      - "services/platform/contracts.ts"
+      - "services/platform/capacitor/pdfChefDocuments.ts"
+      - "services/platform/capacitor/iosDocumentServices.ts"
+      - "services/platform/local/localWorkspaceRepositories.ts"
+      - "tests/platform/pdfChefDocuments.test.ts"
+      - "tests/platform/iosDocumentServices.test.ts"
+      - "tests/platform/localWorkspaceRepositories.test.ts"
+      - "ios/App/App/PdfChefDocumentStore.swift"
+      - "ios/App/App/PdfChefDocumentsPlugin.swift"
+      - "ios/App/App/PdfChefDocumentPresentation.swift"
+      - "ios/App/App.xcodeproj/project.pbxproj"
+      - "ios/App/AppTests/PdfChefDocumentStoreTests.swift"
+    verify:
+      - "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts tests/platform/pdfChefDocuments.test.ts tests/platform/iosDocumentServices.test.ts tests/platform/localWorkspaceRepositories.test.ts"
+      - "npm run lint"
+      - "npm run test:catalog"
+      - "npm run build"
+      - "xcodebuild -list -project ios/App/App.xcodeproj"
+      - "xcodebuild test -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t007-derived CODE_SIGNING_ALLOWED=NO -only-testing:AppTests/PdfChefDocumentStoreTests"
+    stop_if:
+      - "A visible UI decision is required."
+      - "Need files outside allowed_files."
+      - "An iOS permission cannot be justified by current functionality."
+      - "Verification fails twice for the same reason."
+    receipt:
+      result: done
+      summary: "Implemented and independently accepted the Codex-owned Capacitor bridge, native iOS workspace platform, migration-safe local settings/recent repositories, truthful retained-document listing, copy-in picker, export/share, haptics, metadata, protected transient presentation lifecycle, and listener-first pending-import persistence/acknowledgement. Visible React activation remains the separate Claude-owned T007A seam."
+      changed_files:
+        - "services/platform/contracts.ts"
+        - "services/platform/capacitor/pdfChefDocuments.ts"
+        - "services/platform/capacitor/iosDocumentServices.ts"
+        - "services/platform/local/localWorkspaceRepositories.ts"
+        - "tests/platform/pdfChefDocuments.test.ts"
+        - "tests/platform/iosDocumentServices.test.ts"
+        - "tests/platform/localWorkspaceRepositories.test.ts"
+        - "ios/App/App/PdfChefDocumentStore.swift"
+        - "ios/App/App/PdfChefDocumentsPlugin.swift"
+        - "ios/App/App/PdfChefDocumentPresentation.swift"
+        - "ios/App/App.xcodeproj/project.pbxproj"
+        - "ios/App/AppTests/PdfChefDocumentStoreTests.swift"
+      commands:
+        - cmd: "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts tests/platform/pdfChefDocuments.test.ts tests/platform/iosDocumentServices.test.ts tests/platform/localWorkspaceRepositories.test.ts"
+          status: pass
+          detail: "31/31 tests"
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "npm run test:catalog"
+          status: pass
+          detail: "34 tools, 44 routes, 40 sitemap entries"
+        - cmd: "npm run build"
+          status: pass
+          detail: "2,039 modules and 147 offline assets; only existing PDF.js eval and large-chunk warnings"
+        - cmd: "xcodebuild -list -project ios/App/App.xcodeproj"
+          status: pass
+          detail: "App and AppTests targets resolve"
+        - cmd: "xcodebuild test -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t007-independent CODE_SIGNING_ALLOWED=NO -only-testing:AppTests/PdfChefDocumentStoreTests"
+          status: pass
+          detail: "15/15 tests"
+      audit:
+        result: accept
+        reviewer: "Independent T007 acceptance review"
+        scope_integrity: "Only the twelve T007 allowlisted files changed; PM updated state.yaml and generated verification outputs separately."
+        before_manifest: "/tmp/pdf-chef-ios-t007-before.sha256"
+        before_manifest_sha256: "b7b8cbbfead26b7ab47e8fcef2c6f0291dc118b9bd7b5e8587e8cc64a9ffcffc"
+        after_manifest: "/tmp/pdf-chef-ios-t007-after.sha256"
+        after_manifest_sha256: "01ccacde92244fcc2dd76c01cc9c3b8d0a0b2f7911af68990caf933e161478cb"
+        deferred: "Live JS discovery, UIKit interaction, offline runtime, Info.plist declarations, workflow integration, and Claude-owned index activation remain later gates."
+
+  - id: T016
+    type: worker
+    assignee: Worker
+    external_owner: "Claude Code Opus 5 High"
+    status: done
+    reasoning_hint: high
+    objective: "Activate the accepted native iOS WorkspacePlatform in the Claude-owned React bootstrap without changing visible behavior: gate on native iOS/plugin availability, create exactly one platform instance, await platform.ready, and inject that same instance into AppRoot; preserve the browser/PWA fallback."
+    allowed_files:
+      - "index.tsx"
+    verify:
+      - "npm run lint"
+      - "npm run test:catalog"
+      - "npm run build"
+    stop_if:
+      - "Any visible copy, layout, styling, motion, or workflow decision is required."
+      - "Need a file outside index.tsx."
+      - "The accepted Codex factory contract cannot be used as-is."
+      - "Verification fails twice for the same reason."
+    receipt:
+      result: done
+      summary: "The same authenticated Claude Opus 5 High session activated the accepted native iOS WorkspacePlatform in index.tsx only: real plugin gating, exactly one platform instance outside StrictMode, listener-first readiness settlement, same-instance AppRoot injection, and unchanged browser/PWA fallback. No visible UI, copy, route, styling, or Codex-owned service changed."
+      changed_files:
+        - "index.tsx"
+      hashes:
+        index_tsx: "409b3b95c64ecad79de42494755be8c0b9978e6fac689318a43a94349e0e01e3"
+        public_sw_unchanged: "2cb7481625955f5a6ca987ca231f25f91182049b51264be90d25556786a804b2"
+        t007_after_manifest_unchanged: "01ccacde92244fcc2dd76c01cc9c3b8d0a0b2f7911af68990caf933e161478cb"
+      claude_evidence:
+        model: "claude-opus-5"
+        effort: high
+        session_id: "0bf4c2f4-885c-4904-9557-7363dc854681"
+        cli_version: "2.1.251"
+        permission_mode: acceptEdits
+        status: "CLAUDE_T016_STATUS: COMPLETE"
+        cost_usd: 2.1217215
+      commands:
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "npm run test:catalog"
+          status: pass
+          detail: "34 tools, 44 routes, 40 sitemap entries"
+        - cmd: "npm run build"
+          status: pass
+          detail: "147 offline assets"
+      audit:
+        result: accept
+        reviewer: "Independent T016 activation review"
+        scope_integrity: "Claude tool transcript shows every edit targeted index.tsx only; the T007 after-manifest files and service worker remained hash-identical."
+        remaining_gate: "Live native plugin discovery and cold-start timing remain simulator/runtime gates."
+
+  - id: T008
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Route the single shared PDF output seam through an installable typed delivery handler so native iOS retention, Recent metadata, and auto-export use the accepted platform without editing tool UI or algorithms; add a fresh-build verifier proving PDF.js, QPDF, OCR workers/models, fonts, and WebAssembly are bundled and exactly precached for offline use. Runtime offline proof remains a later simulator gate."
+    allowed_files:
+      - "services/platform/contracts.ts"
+      - "services/pdfShared.ts"
+      - "services/platform/capacitor/iosDocumentServices.ts"
+      - "tests/platform/iosDocumentServices.test.ts"
+      - "tests/services/pdfShared.test.ts"
+      - "scripts/verify-offline-assets.mjs"
+    verify:
+      - "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts tests/platform/pdfChefDocuments.test.ts tests/platform/iosDocumentServices.test.ts tests/platform/localWorkspaceRepositories.test.ts tests/services/pdfShared.test.ts"
+      - "npm run lint"
+      - "npm run test:catalog"
+      - "npm run build"
+      - "node scripts/verify-offline-assets.mjs"
+    stop_if:
+      - "A major algorithm rewrite is required; classify the defect for Judge review."
+      - "The approach would upload documents or metadata."
+      - "A visible workflow redesign is required."
+      - "Need files outside allowed_files."
+    receipt:
+      result: done
+      summary: "Implemented and independently accepted one typed shared output-delivery seam for all 38 output actions, with truthful native retention/Recent/auto-export behavior and a strict fresh-build offline asset verifier. Browser fallback is unchanged; runtime offline execution remains a simulator gate."
+      changed_files:
+        - "services/platform/contracts.ts"
+        - "services/pdfShared.ts"
+        - "services/platform/capacitor/iosDocumentServices.ts"
+        - "tests/platform/iosDocumentServices.test.ts"
+        - "tests/services/pdfShared.test.ts"
+        - "scripts/verify-offline-assets.mjs"
+      commands:
+        - cmd: "node --test tests/domain/workspacePolicy.test.ts tests/domain/workspaceMigration.test.ts tests/platform/pdfChefDocuments.test.ts tests/platform/iosDocumentServices.test.ts tests/platform/localWorkspaceRepositories.test.ts tests/services/pdfShared.test.ts"
+          status: pass
+          detail: "38/38 tests"
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "npm run test:catalog"
+          status: pass
+          detail: "34 tools, 44 routes, 40 sitemap entries"
+        - cmd: "npm run build"
+          status: pass
+        - cmd: "node scripts/verify-offline-assets.mjs"
+          status: pass
+          detail: "147 precached files, 8 OCR assets, 57 fonts"
+      audit:
+        result: accept
+        reviewer: "Independent T008 acceptance review"
+        remaining_gate: "Network-disabled simulator execution of PDF.js, QPDF, and Tesseract remains a later runtime gate."
+
+  - id: T009
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Complete Capacitor and Xcode configuration, privacy manifest, file declarations, necessary permission descriptions, icons/launch wiring, safe status-bar behavior, and offline packaging."
+    allowed_files:
+      - "ios/App/App/Info.plist"
+      - "ios/App/App/PrivacyInfo.xcprivacy"
+      - "ios/App/App/Base.lproj/LaunchScreen.storyboard"
+      - "ios/App/App/Assets.xcassets/LaunchBackground.colorset/Contents.json"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/Contents.json"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/launch-light.png"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/launch-dark.png"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png"
+      - "ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json"
+      - "ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+      - "ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024-dark.png"
+      - "ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024-tinted.png"
+      - "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
+      - "ios/App/App.xcodeproj/project.pbxproj"
+    verify:
+      - "plutil -lint ios/App/App/Info.plist ios/App/App/PrivacyInfo.xcprivacy"
+      - "Validate generated 1024px RGB app icons have no alpha"
+      - "npm run ios:sync"
+      - "One fixed-simulator xcodebuild build"
+      - "Inspect App.app for document declarations, PrivacyInfo.xcprivacy, and Assets.car"
+      - "One simulator install/launch and PDF Open-In copy-in check"
+    stop_if:
+      - "Artwork has not been provided and accepted by Claude."
+      - "A permission is not strictly required."
+      - "A remote application server URL would be introduced."
+      - "Need files outside allowed_files."
+    receipt:
+      result: done
+      summary: "Added accepted PDF-only Open-In/file-privacy declarations, the exact disk-space privacy reason, approved light/dark launch assets, ordinary/dark/tinted app icons, and bundled offline web output. Static packaging audit, one sync/build, and one simulator install/launch passed."
+      changed_files:
+        - "ios/App/App/Info.plist"
+        - "ios/App/App/PrivacyInfo.xcprivacy"
+        - "ios/App/App/Base.lproj/LaunchScreen.storyboard"
+        - "ios/App/App/Assets.xcassets/LaunchBackground.colorset/Contents.json"
+        - "ios/App/App/Assets.xcassets/Splash.imageset/Contents.json"
+        - "ios/App/App/Assets.xcassets/Splash.imageset/launch-light.png"
+        - "ios/App/App/Assets.xcassets/Splash.imageset/launch-dark.png"
+        - "ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json"
+        - "ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+        - "ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024-dark.png"
+        - "ios/App/App/Assets.xcassets/AppIcon.appiconset/icon-1024-tinted.png"
+        - "ios/App/App.xcodeproj/project.pbxproj"
+      commands:
+        - cmd: "plutil and image metadata checks"
+          status: pass
+          detail: "Plists/XML valid; app icons 1024px RGB sRGB with no alpha"
+        - cmd: "npm run ios:sync"
+          status: pass
+          detail: "One production build and Capacitor sync"
+        - cmd: "xcodebuild build on iPhone 17 Pro simulator"
+          status: pass
+        - cmd: "simulator install and launch"
+          status: pass
+          detail: "App launched with live native plugin and readable status bar"
+      audit:
+        result: accept
+        reviewer: "Independent T009 packaging review"
+        remaining_gate: "Exercise the system share-sheet Open-In choice and private copy during the final critical-path simulator pass."
+
+  - id: T017
+    type: worker
+    assignee: Worker
+    external_owner: "Claude Code Opus 5 High"
+    status: done
+    reasoning_hint: high
+    objective: "Use Inter as the default interface font and reuse the Android app's exact generated tool identity marks and exact shared tool names on the dashboard, recent chips, reader action menu, and tool-page header without copying the Android layout or changing routes, algorithms, or platform contracts."
+    allowed_files:
+      - "index.tsx"
+      - "index.css"
+      - "assets/design-tokens.css"
+      - "assets/design-tokens.json"
+      - "design-system/MASTER.md"
+      - "design-system/pages/home.md"
+      - "components/Pages/SettingsPage.tsx"
+      - "components/Tools/toolCatalog.ts"
+      - "components/Tools/ToolIdentity.tsx"
+      - "components/Tools/Dashboard.tsx"
+      - "components/Layout/AppShell.tsx"
+      - "components/Tools/ViewPDF.tsx"
+      - "components/Tools/ImageToPDF.tsx"
+      - "components/Tools/PDFToImage.tsx"
+      - "public/tool-icons/**"
+      - "services/workspace.ts"
+      - "scripts/verify-offline-assets.mjs"
+      - "THIRD_PARTY_NOTICES.md"
+      - "package.json"
+      - "package-lock.json"
+    verify:
+      - "One TypeScript check after all T017 edits"
+      - "One final ios:sync and simulator build after all remaining source edits"
+    stop_if:
+      - "Any Android source would be modified."
+      - "Any tool route, algorithm, or persistence identity would change."
+      - "A broader UI redesign is required."
+      - "Need files outside allowed_files."
+    receipt:
+      result: done
+      summary: "The user explicitly authorized Codex to implement this narrow visible slice while reserving final visual acceptance for exact Claude Code Opus 5 High. Inter is now bundled and selected by default, and the 25 Android-shared tools reuse their exact established names and generated identities across the required web surfaces without copying the Android layout."
+      evidence:
+        - "One focused TypeScript check passed: npm run lint (tsc --noEmit)."
+        - "Focused browser inspection confirmed Inter as the computed default, 25 local tool identities on Home, Inter selected in Settings, and immediate tool identity visibility in standard and immersive tool headers."
+        - "All 24 Android PNG assets are byte-identical; the Make Fillable SVG paths and fills match the Android vector."
+        - "The independent T017 acceptance audit returned ACCEPT."
+        - "The 5,276-file read-only Android reference manifest remained identical."
+      changed_files:
+        - "index.tsx"
+        - "index.css"
+        - "assets/design-tokens.css"
+        - "assets/design-tokens.json"
+        - "design-system/MASTER.md"
+        - "design-system/pages/home.md"
+        - "components/Pages/SettingsPage.tsx"
+        - "components/Tools/toolCatalog.ts"
+        - "components/Tools/ToolIdentity.tsx"
+        - "components/Tools/Dashboard.tsx"
+        - "components/Layout/AppShell.tsx"
+        - "components/Tools/ViewPDF.tsx"
+        - "components/Tools/ImageToPDF.tsx"
+        - "components/Tools/PDFToImage.tsx"
+        - "public/tool-icons/**"
+        - "services/workspace.ts"
+        - "scripts/verify-offline-assets.mjs"
+        - "THIRD_PARTY_NOTICES.md"
+        - "package.json"
+        - "package-lock.json"
+      commands:
+        - cmd: "npm run lint"
+          status: pass
+          detail: "Single focused TypeScript check; not repeated."
+        - cmd: "Focused in-app browser inspection at the local Vite server"
+          status: pass
+          detail: "Verified Inter default/Settings and required tool-identity surfaces at desktop and 390x844 phone viewport."
+      audit:
+        result: accept
+        reviewer: "Independent T017 acceptance audit"
+        remaining_gate: "Exact Claude Code Opus 5 High must perform final visual acceptance after its usage reset; it will review the Codex implementation rather than redo it."
+
+  - id: T010
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Perform one read-only integration audit for ownership, privacy, offline behavior, persistence, portability, and document-loss risks; identify only genuinely missing evidence and do not request reruns of already accepted checks."
+    inputs:
+      - "T004-T009 receipts"
+      - "Current file manifest and diffs"
+    constraints:
+      - "Read-only."
+      - "Reject any Codex-authored visible UI decision."
+      - "Reject any unbundled runtime asset or permanent blob URL."
+    expected_output:
+      - "Integration verdict"
+      - "Required corrections"
+      - "Minimal remaining verification only"
+      - "Deferred algorithm defects, if justified"
+    receipt:
+      result: done
+      decision: "REJECT — one material integration blocker."
+      findings:
+        - "The existing journaled IndexedDB migration has no production caller before the native iOS platform replaces the browser adapter, so previously retained browser outputs can disappear from Recent after upgrade."
+        - "No other material ownership, privacy, offline-asset, portability, or durable-reference blocker was found."
+      required_correction: "Add a crash-resumable native startup migration that retains each legacy blob, commits Recent metadata plus an idempotent legacy-ID journal, and never deletes legacy data on partial failure. Validate only this migration contract."
+      spawned_task: T018
+
+  - id: T018
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Wire the existing legacy IndexedDB output store into native iOS startup through a persistent, idempotent, crash-resumable migration journal so an upgrade preserves prior Recent results without deleting legacy data."
+    allowed_files:
+      - "services/platform/capacitor/legacyWorkspaceMigration.ts"
+      - "services/platform/capacitor/iosDocumentServices.ts"
+      - "tests/platform/legacyWorkspaceMigration.test.ts"
+    verify:
+      - "Run only the new legacy workspace migration contract test file."
+    stop_if:
+      - "A visible frontend, Android, generated, or native Swift change is required."
+      - "Migration would delete or mutate the legacy IndexedDB outputs."
+      - "Need files outside allowed_files."
+    receipt:
+      result: done
+      summary: "Native iOS startup now performs a read-only, crash-resumable migration of legacy IndexedDB outputs into retained native documents and Recent before the app renders. A persistent legacy-ID journal plus deterministic SHA-256 marker names prevents duplicate retention across relaunch boundaries, repairs missing Recent metadata, and leaves legacy bytes untouched."
+      changed_files:
+        - "services/platform/capacitor/legacyWorkspaceMigration.ts"
+        - "services/platform/capacitor/iosDocumentServices.ts"
+        - "tests/platform/legacyWorkspaceMigration.test.ts"
+      commands:
+        - cmd: "node --test tests/platform/legacyWorkspaceMigration.test.ts"
+          status: pass
+          detail: "5 of 5 focused migration contract cases passed; no broader suite was run."
+      audit:
+        result: accept
+        reviewer: "Independent T018 acceptance audit"
+        detail: "Production caller, listener-first ordering, idempotent journal, deterministic crash adoption, repair behavior, and read-only legacy access all accepted."
+
+  - id: T011
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Reuse accepted T006-T009 evidence. Only if later source changes invalidate that evidence, run the smallest affected contract check and one final iOS sync/build; never rerun the blanket web, native, or catalog suites."
+    allowed_files:
+      - "dist/**"
+      - "ios/App/App/public/**"
+      - "ios/App/App/capacitor.config.json"
+      - "ios/App/CapApp-SPM/Package.swift"
+      - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "ios/capacitor-cordova-ios-plugins/**"
+    verify:
+      - "Reuse accepted prior receipts when their source hashes remain valid"
+      - "If a later correction changes a contract, run only its directly affected test file"
+      - "If source changed after T009, run exactly one final npm run ios:sync and one fixed-simulator Xcode build"
+    stop_if:
+      - "A failure requires a visible frontend change; return it to Claude."
+      - "Need files outside allowed_files."
+      - "The same failure remains unexplained after two focused attempts."
+    receipt:
+      result: done
+      summary: "After the final T017/T018 source changes, exactly one production web build plus Capacitor iOS sync and one fixed-simulator Xcode build completed successfully. Previously accepted contract evidence was reused and no blanket suite was rerun."
+      changed_files:
+        - "dist/**"
+        - "ios/App/App/public/**"
+        - "ios/App/App/capacitor.config.json"
+        - "ios/App/CapApp-SPM/Package.swift"
+        - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      commands:
+        - cmd: "npm run ios:sync"
+          status: pass
+          detail: "Vite production build, 178-asset offline manifest injection, and Capacitor iOS sync completed once."
+        - cmd: "xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t011-final CODE_SIGNING_ALLOWED=NO build"
+          status: pass
+          detail: "BUILD SUCCEEDED; exact artifact is /tmp/pdf-chef-ios-t011-final/Build/Products/Debug-iphonesimulator/App.app."
+
+  - id: T012
+    type: pm
+    assignee: PM
+    status: done
+    reasoning_hint: high
+    objective: "Use the exact accepted simulator build for one critical-path pass: cold/relaunch, network-disabled launch, PDF import, representative PDF.js/QPDF/OCR operations, save/share, and Recent reopen. Do not smoke-test every visible tool or repeat browser-level algorithm coverage."
+    inputs:
+      - "T011 accepted build artifact"
+      - "Approved test PDFs"
+      - "Simulator runtimes"
+    constraints:
+      - "Bind evidence to the exact built artifact."
+      - "Do not claim physical-device, App Store, or production proof."
+      - "Record automation limits for system share UI separately."
+    expected_output:
+      - "Simulator install and launch proof"
+      - "Critical-path functional result"
+      - "Offline asset and network-disabled proof"
+      - "Performance and memory observations"
+      - "Exact failures and DEFERRED candidates"
+    receipt:
+      result: done
+      summary: "The exact T011 App.app was installed on iPhone 17 Pro simulator 83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241. One bounded critical-path pass covered Open-In/private-copy import, PDF.js rendering, QPDF protection and native save, OCR across five pages, native share, Recent persistence/reopen, relaunch, and a proxy-denied process launch followed by retained local PDF reopen. No blanket tool sweep or repeated OCR/QPDF run was performed."
+      artifact:
+        path: "/tmp/pdf-chef-ios-t011-final/Build/Products/Debug-iphonesimulator/App.app"
+        executable_sha256: "0a8dcdc6bfcc5f9e1399b1da53302066a800f1098760bc72f7825cfa6173d5f0"
+      simulator:
+        device: "iPhone 17 Pro"
+        runtime: "iOS 26.3"
+        udid: "83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241"
+      functional_results:
+        - status: pass
+          detail: "System Preview Open-In selected PDF Chef; the app retained a private copy and PDF.js rendered qa-main-5p.pdf page 1 of 5."
+        - status: pass
+          detail: "QPDF Protect encrypted the retained PDF, native Save completed, the result appeared in Recent, and reopening required the correct password before rendering."
+        - status: pass
+          detail: "Extract Text OCR processed all five pages of the unprotected fixture using bundled local OCR assets and displayed recognized content."
+        - status: pass
+          detail: "The native iOS share sheet opened for the protected result."
+        - status: pass
+          detail: "A launch with HTTP, HTTPS, and SOCKS proxy paths forced to unreachable loopback endpoints reached Home; Recent retained both entries and qa-main-5p.pdf reopened and rendered locally."
+      observations:
+        memory: "Observed RSS was 270880 KB (about 264.5 MiB) after the exercised workflow; no crash or hang was observed."
+        limitation: "This is simulator evidence. Hardware radio-off, physical-device behavior, App Store distribution, and production behavior were not checked. The network-denied evidence is specifically an unreachable-proxy process launch, not airplane-mode proof."
+        deferred: "Direct Extract Text routing from the encrypted protected viewer does not propagate the viewer password and therefore failed for that protected input; OCR itself passed on the unprotected PDF."
+      screenshots:
+        - "output/ios-t012/share-sheet.png"
+        - "output/ios-t012/home-proxy-denied.png"
+        - "output/ios-t012/recent-proxy-denied.png"
+        - "output/ios-t012/reopen-proxy-denied.png"
+
+  - id: T013
+    type: worker
+    assignee: Worker
+    external_owner: "Claude Code Opus 5 High"
+    status: done
+    reasoning_hint: high
+    objective: "Review simulator screenshots and perform Impeccable harden, polish, adapt, and audit passes plus final Apple Design interaction and Brand consistency review."
+    allowed_files:
+      - "App.tsx"
+      - "index.tsx"
+      - "index.css"
+      - "components/**"
+      - "hooks/**"
+      - "assets/design-tokens.*"
+      - "assets/brand/**"
+      - "public/tool-icons/**"
+      - "design-system/**"
+    verify:
+      - "Review the exact T012 simulator screenshot evidence with Claude Code Opus 5 High session 0bf4c2f4-885c-4904-9557-7363dc854681."
+      - "Include output/ios-t019/home-red-logo.png plus the final AppIcon and launch artwork in the brand consistency verdict."
+      - "Include output/ios-t020/home-android-inspired.png in the final homepage visual verdict."
+      - "Include output/ios-t021/home-minimal-ordered.png and the minimal-copy Settings result in the final visual verdict."
+      - "Record the final visual verdict and only request corrections that are visible and within Claude-owned scope."
+    stop_if:
+      - "Exact Claude model/session evidence is missing."
+      - "Required screenshot coverage is missing."
+      - "Need files outside Claude-owned scope."
+      - "A requested fix is non-visual engineering; return it to Codex."
+    receipt:
+      result: done
+      summary: "Exact authenticated Claude Code Opus 5 High completed the final Apple Design, Impeccable, and Brand review, closed three targeted evidence gaps, corrected the shared tool-header identity fade, and issued final UI acceptance with no remaining visual gates."
+      verdict: "ACCEPT. Final visual acceptance is complete with no remaining visual gates."
+      changed_files:
+        - "components/**"
+        - "assets/brand/**"
+      commands:
+        - cmd: "npm run build"
+          status: pass
+        - cmd: "npx cap sync ios"
+          status: pass
+        - cmd: "xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t022-final CODE_SIGNING_ALLOWED=NO build"
+          status: pass
+        - cmd: "simctl install and launch com.dhananjaytech.pdfchef"
+          status: pass
+        - cmd: "Exact Claude session final visual review"
+          status: pass
+          detail: "UI_VERDICT ACCEPT; REMAINING_VISUAL_GATES None."
+      claude_evidence:
+        model: "claude-opus-5 (Opus 5)"
+        effort: high
+        session_id: "0bf4c2f4-885c-4904-9557-7363dc854681"
+        cli_version: "2.1.251"
+        permission_mode: acceptEdits
+      required_context:
+        - "/Users/dhananjaybhosale/.agents/skills/apple-design/SKILL.md"
+        - "/Users/dhananjaybhosale/.agents/skills/impeccable/SKILL.md plus required product, critique, and audit references"
+        - "/Users/dhananjaybhosale/.codex/skills-src/ui-ux-pro-max-skill/.claude/skills/brand/SKILL.md"
+        - "Impeccable context loader consumed PRODUCT.md and DESIGN.md in full"
+      reviewed_evidence:
+        - "output/ios-t012/share-sheet.png"
+        - "output/ios-t012/home-proxy-denied.png"
+        - "output/ios-t012/recent-proxy-denied.png"
+        - "output/ios-t012/reopen-proxy-denied.png"
+        - "output/ios-t019/home-red-logo.png"
+        - "output/ios-t020/home-android-inspired.png"
+        - "output/ios-t021/home-minimal-ordered.png"
+        - "output/ios-t021/settings-minimal-mobile.png"
+        - "output/ios-t022/recent-red-browser.png"
+        - "output/ios-t022/tools-dark-browser.png"
+        - "output/ios-t022/settings-dark-browser.png"
+        - "output/ios-t022/merge-header-identity-scrolled-browser.png"
+      corrections:
+        - "Removed five unused superseded indigo/redrawn brand SVG masters from assets/brand so the exact Android logo PNG and its README recipe remain the only authoritative brand source."
+        - "In components/Layout/AppShell.tsx, moved tool-header opacity and aria-hidden state to the shared identity/title wrapper so the exact Android mark never appears without its tool name."
+      final_rationale:
+        - "Inter is bundled offline and is the default UI and numeric font while alternate user font choices remain available."
+        - "The Android-shared tool names and exact marks are preserved, including the mechanically converted Make Fillable SVG; Read PDF correctly uses a Lucide Eye because Android has no Reader mark."
+        - "The red accent, original Android app logo, concise Settings copy, exact Android Home subtitles, Android-derived tool order, dark appearance, Recent state, and Apple navigation conventions form one coherent accepted system."
+        - "The corrected scrolled Merge PDF header shows the exact mark and exact title as one centered unit; Claude made no further edits and reported no open visual gates."
+        - "A fresh review of output/ios-subtitles/home-android-subtitles.png confirmed all 25 Android-shared subtitles match PdfTool.kt exactly and issued UI_VERDICT ACCEPT with no corrections or remaining visual gates."
+
+  - id: T021
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Apply the user's minimal-copy policy to Settings, retaining only essential privacy, safety, consequence, legal, dynamic-value, and error text. Change the Tools homepage to one uninterrupted list ordered as Create PDF, Read PDF, then the exact Android popularity order, followed by web-only tools. Preserve routes, filters, search scoring, badges, haptics, accessibility, Recent tab behavior, and Android read-only boundaries."
+    allowed_files:
+      - "components/Pages/SettingsPage.tsx"
+      - "components/Tools/Dashboard.tsx"
+      - "design-system/MASTER.md"
+      - "design-system/pages/home.md"
+      - "design-system/pages/settings.md"
+      - "dist/**"
+      - "ios/App/App/public/**"
+      - "ios/App/App/capacitor.config.json"
+      - "ios/App/CapApp-SPM/Package.swift"
+      - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    verify:
+      - "Confirm the unfiltered homepage order is Create PDF, Read PDF, then the exact Android popularity order, then the eight web-only tools."
+      - "Confirm all 34 routes remain unique and reachable; Read PDF continues to use /view without adding another catalog entry."
+      - "Confirm Settings keeps concise privacy, data-loss, destructive confirmation, legal, live status, and error copy while removing redundant helper text."
+      - "Run only the production build, iOS sync, fixed-simulator Xcode build, and targeted simulator screenshots needed for this visible change."
+    stop_if:
+      - "The Android reference would need modification."
+      - "A tool route, operation, persistence contract, or search scoring behavior would need to change."
+      - "A change outside allowed_files is required."
+      - "Final visual judgment is required; defer that verdict to Claude Opus 5."
+    receipt:
+      result: done
+      summary: "Applied the user's minimal-copy policy to Settings while retaining essential privacy, safety, data-loss, legal, dynamic-value, destructive confirmation, live status, error, and accessibility text. Replaced the grouped/interrupted homepage catalog with one concise flat list ordered Create PDF, Read PDF, then the exact Android popularity order, followed by all eight web-only tools. The homepage-only Read PDF label reuses /view and does not add a route or catalog entry."
+      changed_files:
+        - "components/Pages/SettingsPage.tsx"
+        - "components/Tools/Dashboard.tsx"
+        - "design-system/MASTER.md"
+        - "design-system/pages/home.md"
+        - "design-system/pages/settings.md"
+        - "dist/**"
+        - "ios/App/App/public/**"
+        - "ios/App/App/capacitor.config.json"
+        - "ios/App/CapApp-SPM/Package.swift"
+        - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      preserved:
+        - "All 34 existing tool routes, category counts, search scoring and tie-break order, badges, haptics, empty-state reset, and Recent tab/store behavior."
+        - "Settings controls, persistence, screen-reader labels, confirmation titles/buttons, and necessary live error/status behavior."
+        - "Android source remained read-only."
+      artifact:
+        path: "/tmp/pdf-chef-ios-t021-final/Build/Products/Debug-iphonesimulator/App.app"
+        executable_sha256: "6ca24361d9526029e8aefe05f2c717d2ff56499cf2de7653796147d3732998f5"
+      simulator:
+        device: "iPhone 17 Pro"
+        runtime: "iOS 26.3"
+        udid: "83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241"
+        screenshot: "output/ios-t021/home-minimal-ordered.png"
+      commands:
+        - cmd: "npm run build"
+          status: pass
+          detail: "Production Vite build passed once and injected 178 bundled offline assets into cache 7efc2316378a."
+        - cmd: "npx cap sync ios"
+          status: pass
+          detail: "Copied the exact built offline bundle into iOS and updated Capacitor Swift packages once."
+        - cmd: "xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t021-final CODE_SIGNING_ALLOWED=NO build"
+          status: pass
+          detail: "BUILD SUCCEEDED for the fixed iPhone 17 Pro simulator."
+        - cmd: "simctl install, launch, wait for render, screenshot, and visual inspection"
+          status: pass
+          detail: "The exact artifact visibly opened with Create PDF, Read PDF, Compress PDF, Merge PDF, Split PDF, and Edit PDF in the required order, with concise rows and no interrupting Recent strip or group heading."
+        - cmd: "Focused 390x844 local production-preview inspection of /settings"
+          status: pass
+          detail: "Settings remained scannable after copy reduction and retained the required privacy, safety, data-loss, legal, destructive confirmation, dynamic-value, and accessibility content. The temporary preview tab and server were closed afterward."
+      limitations:
+        - "No broad, duplicate, catalog, or behavioral test suite was run; the production compiler and focused visual checks were used for this UI-only change."
+        - "Final visual acceptance remains assigned to exact Claude Code Opus 5 High session 0bf4c2f4-885c-4904-9557-7363dc854681."
+        - "Physical-device, App Store, and production distribution behavior were not checked."
+
+  - id: T022
+    type: worker
+    assignee: Worker
+    external_owner: "Claude Code Opus 5 High final visual review"
+    status: done
+    reasoning_hint: medium
+    objective: "Restore the exact Android subtitles for the 25 Android-shared Home tools while retaining minimal-copy behavior in Settings, Read PDF second, the Android tool order, existing routes, and all accepted visual identity decisions."
+    allowed_files:
+      - "components/Tools/Dashboard.tsx"
+      - "design-system/MASTER.md"
+      - "design-system/pages/home.md"
+      - "dist/**"
+      - "ios/App/App/public/**"
+    verify:
+      - "Compare all 25 shared subtitles directly with Android PdfTool.kt without modifying Android."
+      - "Run one production build, one Capacitor iOS sync, one fixed-simulator Xcode build, and one simulator install/launch."
+      - "Smoke every visible tool route once against the current production bundle."
+      - "Obtain a fresh visual verdict from the exact authenticated Claude Code Opus 5 High session."
+    stop_if:
+      - "The Android reference would need modification."
+      - "A route, algorithm, native contract, or Settings copy policy would need to change."
+      - "A broad duplicate test sweep would be required."
+    receipt:
+      result: done
+      summary: "A Luna worker restored the exact Android PdfTool.kt subtitles for all 25 Android-shared Home rows. Minimal-copy behavior remains scoped to Settings; Read PDF remains second with its honest web-specific fallback subtitle. The current production bundle was synced, built, installed, launched, route-smoked, and freshly accepted by the exact Claude UI owner."
+      changed_files:
+        - "components/Tools/Dashboard.tsx"
+        - "design-system/MASTER.md"
+        - "design-system/pages/home.md"
+        - "dist/**"
+        - "ios/App/App/public/**"
+      source_reference:
+        path: "/Users/dhananjaybhosale/AndroidStudioProjects/PDFTools/app/src/main/java/com/dhananjaytech/zenpdf_allpdftoolsinoneplace/data/model/PdfTool.kt"
+        status: "read-only"
+        identity_result: "25 of 25 shared tool subtitles match exactly."
+        android_baseline_result: "All 5,267 substantive files from the 5,276-file baseline remain byte-identical; only nine .DS_Store Finder metadata files changed. No Android source or asset changed."
+      artifact:
+        path: "/tmp/pdf-chef-ios-subtitles-final/Build/Products/Debug-iphonesimulator/App.app"
+        executable_sha256: "03566c9e299c31b1bcfe534b3b23bda048b34b9dfd82eec89a4d9785041e81b3"
+      simulator:
+        device: "iPhone 17 Pro"
+        runtime: "iOS 26.3"
+        udid: "83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241"
+        screenshot: "output/ios-subtitles/home-android-subtitles.png"
+      commands:
+        - cmd: "npm run build"
+          status: pass
+          detail: "Focused production build passed after the subtitle-only visible correction."
+        - cmd: "npx cap sync ios"
+          status: pass
+          detail: "The current production bundle was copied into the native iOS shell."
+        - cmd: "xcodebuild fixed iPhone 17 Pro simulator build to /tmp/pdf-chef-ios-subtitles-final"
+          status: pass
+          detail: "BUILD SUCCEEDED."
+        - cmd: "simctl install and launch com.dhananjaytech.pdfchef"
+          status: pass
+          detail: "The exact artifact installed and launched on the fixed simulator."
+        - cmd: "Focused production-preview route smoke"
+          status: pass
+          detail: "34 of 34 unique visible tool routes returned a rendered interactive tool with no page error or missing-route state."
+        - cmd: "Exact Claude session current-build visual review"
+          status: pass
+          detail: "UI_VERDICT ACCEPT; CORRECTIONS None; REMAINING_VISUAL_GATES None."
+      claude_evidence:
+        model: "claude-opus-5 (Opus 5)"
+        effort: high
+        session_id: "0bf4c2f4-885c-4904-9557-7363dc854681"
+        cli_version: "2.1.251"
+        permission_mode: acceptEdits
+        verdict: "Final visual acceptance is complete for the current subtitle-restored build."
+      limitations:
+        - "The current 34-route check is a focused render/interactivity smoke, not a duplicate algorithm suite; previously accepted functional contracts and the bounded native critical path remain the engineering evidence."
+        - "Physical-device, App Store, and production distribution behavior were not checked."
+
+  - id: T020
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Polish the mobile Tools homepage using the current Android homepage and supplied screenshot as a visual reference: stronger original-logo header, truthful privacy strip, taller search and segmented categories, larger tool rows with chevrons, and a slightly larger mobile tab bar. Preserve the React information architecture, routes, behavior, accessibility, desktop rail, and Android read-only boundary."
+    allowed_files:
+      - "assets/design-tokens.css"
+      - "assets/design-tokens.json"
+      - "components/Layout/AppShell.tsx"
+      - "components/Tools/Dashboard.tsx"
+      - "design-system/MASTER.md"
+      - "design-system/pages/home.md"
+      - "dist/**"
+      - "ios/App/App/public/**"
+      - "ios/App/App/capacitor.config.json"
+      - "ios/App/CapApp-SPM/Package.swift"
+      - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    verify:
+      - "Confirm all 34 routes, search, counted filters, status badges, haptics, and empty-state reset remain unchanged."
+      - "Inspect the exact updated simulator artifact at phone width."
+      - "Run one production build, one iOS sync without rebuilding, and one fixed-simulator Xcode build; run no broad or duplicate tests."
+    stop_if:
+      - "The Android reference would need modification."
+      - "A behavioral or algorithm change is required."
+      - "A change outside allowed_files is required."
+      - "Final visual judgment is required; defer that verdict to Claude Opus 5."
+    receipt:
+      result: done
+      summary: "Refined the shared mobile Tools homepage using measured patterns from the read-only Android reference without copying its full UI: exact-logo brand header, truthful on-device privacy strip, 52px search, one quiet counted category segment, 72px rows with 48px artwork bubbles and chevrons, and a 60px bottom tab bar. Preserved all 34 routes, search/ranking, category counts, grouped catalog, Recent strip, badges, haptics, empty-state reset, desktop rail, dark tokens, safe-area behavior, and the Tools/Recent/Settings information architecture."
+      changed_files:
+        - "assets/design-tokens.css"
+        - "assets/design-tokens.json"
+        - "components/Layout/AppShell.tsx"
+        - "components/Tools/Dashboard.tsx"
+        - "design-system/MASTER.md"
+        - "design-system/pages/home.md"
+        - "dist/**"
+        - "ios/App/App/public/**"
+        - "ios/App/App/capacitor.config.json"
+        - "ios/App/CapApp-SPM/Package.swift"
+        - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      artifact:
+        path: "/tmp/pdf-chef-ios-t020-final/Build/Products/Debug-iphonesimulator/App.app"
+        executable_sha256: "2469351fda4b5482f900533242c009585f2751af743ff4d2c61fca4682afe6de"
+      simulator:
+        device: "iPhone 17 Pro"
+        runtime: "iOS 26.3"
+        udid: "83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241"
+        screenshot: "output/ios-t020/home-android-inspired.png"
+      commands:
+        - cmd: "npm run build"
+          status: pass
+          detail: "Production Vite build passed and injected 178 bundled offline assets; rerun once only after the simulator exposed and source fixed an overlapping search icon."
+        - cmd: "npx cap sync ios"
+          status: pass
+          detail: "Copied the built offline bundle into iOS and updated Capacitor Swift packages; rerun once after the visible search-spacing correction."
+        - cmd: "xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t020-final CODE_SIGNING_ALLOWED=NO build"
+          status: pass
+          detail: "BUILD SUCCEEDED for the fixed iPhone 17 Pro simulator; final incremental rebuild passed after the visible correction."
+        - cmd: "simctl install, launch, wait for render, screenshot, and visual inspection"
+          status: pass
+          detail: "The exact final artifact launched and showed the corrected search spacing, original logo, truthful privacy message, complete counted filters, larger tool rows, and larger bottom menu."
+      limitations:
+        - "No broad or duplicate behavioral test suite was run; the unchanged behavior was source-inspected and the production compiler passed."
+        - "Final visual acceptance remains assigned to exact Claude Code Opus 5 High session 0bf4c2f4-885c-4904-9557-7363dc854681."
+        - "Physical-device, App Store, and production distribution behavior were not checked."
+
+  - id: T019
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Replace the temporary web/iOS brand mark with the exact production Android PDF Chef logo and change the shared application accent from indigo to the authoritative logo-red family, preserving restrained product semantics, offline assets, and Android read-only boundaries."
+    allowed_files:
+      - "assets/design-tokens.css"
+      - "assets/design-tokens.json"
+      - "assets/brand/**"
+      - "components/Layout/AppShell.tsx"
+      - "components/Layout/Header.tsx"
+      - "components/Tools/ViewPDF.tsx"
+      - "design-system/MASTER.md"
+      - "docs/brand-guidelines.md"
+      - "dist/**"
+      - "index.css"
+      - "index.html"
+      - "public/**"
+      - "tailwind.config.cjs"
+      - "ios/App/App/Assets.xcassets/AppIcon.appiconset/**"
+      - "ios/App/App/Assets.xcassets/Splash.imageset/**"
+      - "ios/App/App/public/**"
+      - "ios/App/App/capacitor.config.json"
+      - "ios/App/CapApp-SPM/Package.swift"
+      - "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    verify:
+      - "Confirm all visible and manifest logo consumers use the canonical exact Android asset pack."
+      - "Confirm CSS, JSON, Tailwind, and durable design guidance agree on the red accent semantics."
+      - "Run only the smallest focused asset/token validation needed; do not repeat the final iOS build or critical-path simulator pass."
+    stop_if:
+      - "The Android reference would need modification."
+      - "A change outside allowed_files is required."
+      - "A visual correction requires final Claude Opus 5 judgment."
+    receipt:
+      result: done
+      summary: "Replaced the temporary indigo page mark with byte-identical exports from the exact production Android PDF Chef logo pack across visible web chrome, metadata, offline shell, PWA icon, iOS AppIcon, and light/dark launch artwork. Replaced the indigo application accent with the Android logo-red family while preserving restrained semantics and separate danger clay."
+      brand:
+        canonical_source: "/Users/dhananjaybhosale/AndroidStudioProjects/PDFTools/design-assets/pdf-chef-brand-exact"
+        logo_png_sha256: "2b3ba333c752bedee55e50c3da136a8d56633568558a0ab2ed886960ef051dec"
+        logo_webp_sha256: "fd76962d65319f89ae2756223e7632553026103f618cf3786f34a3c3bca335a9"
+        light_logo_anchor: "#E42121"
+        light_semantic_accent: "#DC2020"
+        dark_semantic_accent: "#FF4D52"
+      changed_files:
+        - "assets/design-tokens.css"
+        - "assets/design-tokens.json"
+        - "assets/brand/**"
+        - "components/Layout/AppShell.tsx"
+        - "components/Layout/Header.tsx"
+        - "components/Tools/ViewPDF.tsx"
+        - "design-system/MASTER.md"
+        - "docs/brand-guidelines.md"
+        - "index.css"
+        - "index.html"
+        - "public/**"
+        - "tailwind.config.cjs"
+        - "ios/App/App/Assets.xcassets/AppIcon.appiconset/**"
+        - "ios/App/App/Assets.xcassets/Splash.imageset/**"
+        - "dist/**"
+        - "ios/App/App/public/**"
+        - "ios/App/App/capacitor.config.json"
+        - "ios/App/CapApp-SPM/Package.swift"
+      removed_files:
+        - "public/logo.svg"
+        - "public/favicon.svg"
+        - "public/og-image.svg"
+      commands:
+        - cmd: "Focused token parity and canonical logo hash verification"
+          status: pass
+          detail: "All 12 accent ramp steps match JSON, CSS, and Tailwind; public PNG/WebP are byte-identical to the canonical Android exact-pack exports; no old logo or indigo accent reference remains on active checked surfaces."
+        - cmd: "npm run build"
+          status: pass
+          detail: "Production web build passed once and injected 179 offline assets into cache e4ce5e102ef9."
+        - cmd: "npx cap sync ios"
+          status: pass
+          detail: "Copied the already-built dist output and updated iOS plugins once without repeating the web build."
+        - cmd: "xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'platform=iOS Simulator,id=83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241' -derivedDataPath /tmp/pdf-chef-ios-t019-final CODE_SIGNING_ALLOWED=NO build"
+          status: pass
+          detail: "BUILD SUCCEEDED; executable SHA-256 8d3edf6e1704f495a868cf1886cc58fc5f4526a129f959199eda171f5046e660."
+        - cmd: "simctl install, launch, and screenshot on iPhone 17 Pro simulator"
+          status: pass
+          detail: "Updated artifact launched with the red accent system; evidence at output/ios-t019/home-red-logo.png."
+      limitations:
+        - "Final visual acceptance remains assigned to the exact Claude Code Opus 5 High session."
+        - "Physical-device, App Store, and production distribution behavior were not checked."
+
+  - id: T014
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit screenshot, responsive, text-size, reduced-motion, long-filename, state, keyboard, confirmation, accessibility, and exact Claude acceptance evidence."
+    inputs:
+      - "T013 receipt"
+      - "Final screenshot set"
+      - "Accessibility and responsive evidence"
+    constraints:
+      - "Read-only."
+      - "Do not accept inferred or substituted Claude identity."
+    expected_output:
+      - "Claude UI verdict evidence"
+      - "Responsive and accessibility verdict"
+      - "Missing visual states or corrections"
+    receipt:
+      result: done
+      decision: "ACCEPT. The current subtitle-restored screenshot/source evidence and exact Claude identity satisfy the UI audit without a duplicate test sweep."
+      evidence:
+        claude: "claude-opus-5 (Opus 5), effort high, authenticated session 0bf4c2f4-885c-4904-9557-7363dc854681; final UI_VERDICT ACCEPT and REMAINING_VISUAL_GATES None."
+        screenshots: "T012 native share/offline/reopen, T019 red logo, T020 Android-inspired sizing, T021 concise Settings and ordered Home, prior post-red Recent/dark/header captures, and output/ios-subtitles/home-android-subtitles.png for the current exact Android subtitle restoration."
+        responsive: "Accepted phone shell evidence plus the prior focused desktop/390x844 T017 inspection; the same three destinations remain a bottom tab bar on phone and side rail on desktop."
+        text_size: "The in-app text-size controls and design tokens remain wired; the final build compiled the accepted presentation without a new broad matrix run."
+        reduced_motion: "The accepted shell retains reduced-motion/reduced-transparency fallbacks and non-looping critically damped motion."
+        long_filename_and_state: "Recent retains bounded/truncated naming and honest unknown/empty/missing states; no value is invented."
+        keyboard_and_accessibility: "Semantic buttons, labels, aria-live status, decorative identity alt/aria handling, focus treatment, and destructive confirmations remain present in the accepted source."
+      missing_visual_states: []
+      corrections: "The only material issue found was the orphan tool-header mark; Claude corrected it and accepted the focused re-capture."
+
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Perform the final requirement-by-requirement completion audit against the original objective and current evidence."
+    inputs:
+      - "All task receipts"
+      - "Current source and asset manifest"
+      - "Last automated, build, simulator, offline, functional, and visual verification"
+      - "Android reference before/after manifest"
+    constraints:
+      - "Read-only."
+      - "Reject completion while any required Worker task is queued, active, or insufficiently evidenced."
+      - "Reject narrow tests as proof of broader requirements."
+      - "Separate PASS, FAIL, DEFERRED, simulator, physical-device, and App Store status."
+    expected_output:
+      - "complete | not_complete"
+      - "full_outcome_complete: true | false"
+      - "Claude UI verdict"
+      - "Codex engineering verdict"
+      - "PASS, FAIL, and DEFERRED tables"
+      - "Simulator verified status"
+      - "Physical device not tested"
+      - "App Store not tested"
+      - "Missing evidence and next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      full_outcome_complete: true
+      scope: "Simulator-backed production-ready demo outcome; physical-device, App Store, and live production distribution are explicitly outside the checked proof."
+      claude_ui_verdict: "ACCEPT from exact Claude Code Opus 5 High session 0bf4c2f4-885c-4904-9557-7363dc854681; final visual acceptance complete with no remaining gates."
+      codex_engineering_verdict: "ACCEPT at the verified simulator/demo scope. The current subtitle-restored production build, Capacitor sync, fixed-simulator Xcode build, install, launch, and 34-of-34 visible-route smoke all passed."
+      pass:
+        - "React/Vite production bundle and 178-file offline manifest injection."
+        - "Capacitor iOS sync and fixed iPhone 17 Pro simulator build."
+        - "Native retained-file persistence, Recent reopen, rename/delete/clear contracts, save/export, native share sheet, Open-In private copy, and haptics wiring."
+        - "Bounded simulator critical path for PDF.js, QPDF, OCR, persistence/reopen, relaunch, and unreachable-proxy offline launch."
+        - "Inter default typography, original Android PDF Chef logo, red accent system, exact Android-shared tool identities/names/subtitles, concise Settings copy, and Android popularity order with Read PDF second."
+        - "Light/dark and post-red visual evidence plus exact authenticated Claude final acceptance."
+        - "All 5,267 substantive files in the 5,276-file Android baseline remain byte-identical after T022; only nine .DS_Store Finder metadata files changed, and no Android source or asset was modified."
+        - "All 34 unique visible tool routes rendered interactively without page errors or missing-route states against the current production bundle."
+      fail: []
+      deferred:
+        - "Superseded by checks.latest_reconciliation: protected-reader to Extract Text now passes with an exact one-shot in-memory password handoff."
+        - "Physical-device radio-off, memory, interaction feel, and hardware behavior were not tested."
+        - "App Store packaging, review, distribution, and production telemetry were not tested."
+      simulator_status: "PASS on iPhone 17 Pro, iOS 26.3, UDID 83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241."
+      physical_device_status: "NOT CHECKED"
+      app_store_status: "NOT CHECKED"
+      missing_evidence: []
+      next_task: null
+
+checks:
+  dirty_fingerprint: "non-git:493-files:875bcc2eb63f5a05481d9b53c4cfad1e32a818a85cf3b06adc9a964fc4910245"
+  source_manifest: "/tmp/pdf-chef-ios-subtitles-source.sha256"
+  android_reference_manifest: "/tmp/pdf-chef-android-reference-before.sha256"
+  last_verification:
+    result: pass
+    task: T022
+    commands:
+      - "npm run build: PASS"
+      - "npx cap sync ios: PASS"
+      - "Fixed-simulator xcodebuild to /tmp/pdf-chef-ios-subtitles-final: BUILD SUCCEEDED"
+      - "Installed and launched com.dhananjaytech.pdfchef on 83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241"
+      - "Focused current production bundle smoke: 34 of 34 unique visible tool routes passed"
+      - "Android baseline: 5,267 substantive files byte-identical; nine .DS_Store metadata changes only; no Android source or asset change"
+      - "Exact Claude Opus 5 session reviewed current Home screenshot and source; UI_VERDICT ACCEPT, CORRECTIONS None, REMAINING_VISUAL_GATES None"
+    artifact:
+      path: "/tmp/pdf-chef-ios-subtitles-final/Build/Products/Debug-iphonesimulator/App.app"
+      executable_sha256: "03566c9e299c31b1bcfe534b3b23bda048b34b9dfd82eec89a4d9785041e81b3"
+  latest_reconciliation:
+    completed_at: "2026-08-30T14:21:00+05:30"
+    result: pass
+    scope: "Current shared React/Vite source reconciled into the iOS simulator artifact and the production website; Android implementation preserved."
+    commands:
+      - "npm run lint: PASS"
+      - "npm run build: PASS; 2,577 modules; 194 offline assets; cache 1ef7fffb32fe"
+      - "npx cap sync ios: PASS"
+      - "Focused protected-reader to Extract Text browser flow at 393x852: PASS; exact spaced password accepted, trimmed control rejected, no second prompt, no repeated onboarding, no history/storage secret, zero console errors"
+      - "Focused xcodebuild test earlier in this reconciliation: PASS; 15 of 15 PdfChefDocumentStoreTests; not repeated after web-only changes"
+      - "Final cached-package xcodebuild build: BUILD SUCCEEDED"
+      - "Install and launch on iPhone 17 Pro simulator 83D60D5E-DDEF-4D9D-A5ED-1F3EA478E241: PASS"
+      - "Cloudflare Pages pdftools production deploy c2202c9e: PASS"
+    package_parity:
+      dist_index_sha256: "8b99b43d9b787e806b0d39fa176a3aa3cf297ff1f7238de05ebd19ed4ee2289c"
+      ios_index_sha256: "8b99b43d9b787e806b0d39fa176a3aa3cf297ff1f7238de05ebd19ed4ee2289c"
+      app_index_sha256: "8b99b43d9b787e806b0d39fa176a3aa3cf297ff1f7238de05ebd19ed4ee2289c"
+      local_service_worker_sha256: "3d3d96dc93ad14ca998e14f72c380c44b9d7421d4ba6d86493259bfeecaea4db"
+      live_service_worker_sha256: "3d3d96dc93ad14ca998e14f72c380c44b9d7421d4ba6d86493259bfeecaea4db"
+      entry_asset_sha256: "db2242bc17922bc062fbb5dc98ca259880656407124f56a78007f117df302043"
+      css_asset_sha256: "c7f112e8ba2fad5b7d899944ba001de4606efec02fe9a506cf7645148dac1a35"
+    changed_source:
+      dashboard_sha256: "d0ef6ff31b31be8a9b959d72de943a4b0bbda1d27c7d98bedf9c8779b099fc73"
+      view_pdf_sha256: "c5a8b66bf3d40558e9a3868126ab8b4bfaed29c60792969a412ac0bb4c635889"
+      ocr_pdf_sha256: "3489d657920574908198601b4b3eac6999d8bb2fc1110bb8b7d283aa296a1a19"
+      file_upload_sha256: "0eb529067f79277ae3c33c7ae07a0bfb2fa4d79c36339366fad5f0d9e4d8914a"
+      opened_pdf_hook_sha256: "af4912d97720a4e4c8a72ad57b5b9d2984655899d7e2c41d3c2afcc29e6b3bad"
+    artifact:
+      path: "/tmp/pdf-chef-ios-current-20260830/Build/Products/Debug-iphonesimulator/App.app"
+      executable_sha256: "e0d0a20c39704bccf401f2fd8e122a394c497132f8b04ab458a131be0ab7bd5c"
+      debug_dylib_sha256: "6f783e254413da6b5f634384686349433a641aaddaf4e9209dc7769d0f18153a"
+      screenshot: "/Users/dhananjaybhosale/Documents/PDFTools-main/output/ios-current-final/home-current-final.png"
+      screenshot_sha256: "d34b34e0aa5a989afc2090e67777f0ff9ae07aa92953337b63183777f5a20944"
+      protected_extract_screenshot: "/Users/dhananjaybhosale/Documents/PDFTools-main/output/ios-current-final/protected-extract-current.png"
+      protected_extract_screenshot_sha256: "5b59665a6563db5e6020833ffa08ef0c594e7b11ebe20c08b1fe3d57a22d7be1"
+    claude_ui_verdict: "ACCEPT — claude-opus-5, High, exact session 0bf4c2f4-885c-4904-9557-7363dc854681, SOURCE_CHANGED NO, REMAINING_VISUAL_GATES None."
+    independent_delta_verdict: "PASS — all five filters use one balanced normal-phone row with accessibility preserved; no blocker."
+    website:
+      production_url: "https://pdfchef.dhananjaytech.app/"
+      deployment_url: "https://c2202c9e.pdftools-8n5.pages.dev/"
+      entry_asset: "/assets/index-D0tphywa.js"
+      css_asset: "/assets/index-DOfgCbVQ.css"
+    deferred:
+      - "Physical-device and App Store distribution verification remain not checked."

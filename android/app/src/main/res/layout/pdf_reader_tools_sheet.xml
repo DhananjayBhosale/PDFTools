@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bottom-anchored tool sheet: a drag cue, a named close, then the list. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/pdf_reader_sheet_background"
+    android:orientation="vertical"
+    android:paddingBottom="8dp">
+
+    <View
+        android:layout_width="36dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/pdf_reader_drag_cue"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/pdf_reader_tools_title"
+            android:textColor="@color/pdf_reader_text_primary"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/pdf_reader_tools_close"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/pdf_reader_tools_close"
+            android:scaleType="centerInside"
+            android:src="@drawable/pdf_reader_ic_close"
+            app:tint="@color/pdf_reader_text_secondary" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="6dp"
+        android:text="@string/pdf_reader_tools_body"
+        android:textColor="@color/pdf_reader_text_secondary"
+        android:textSize="13sp" />
+
+    <!-- Height is capped in code against the real screen, so the sheet is the
+         same predictable size on every phone and the list scrolls inside it. -->
+    <ScrollView
+        android:id="@+id/pdf_reader_tool_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/pdf_reader_tool_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="8dp" />
+    </ScrollView>
+</LinearLayout>

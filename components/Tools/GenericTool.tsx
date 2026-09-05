@@ -9,16 +9,16 @@ interface Props {
 
 export const GenericTool: React.FC<Props> = ({ title, description }) => {
   return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-8">
-      <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-400 mb-6 animate-pulse">
-        <Construction size={40} />
+    <div className="flex flex-col items-center px-4 py-10 text-center">
+      <div className="mb-3 grid h-12 w-12 place-items-center rounded-[var(--radius-panel)] bg-[var(--surface-sunken)] text-[var(--text-tertiary)]">
+        <Construction aria-hidden size={24} />
       </div>
-      <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">{title}</h1>
-      <p className="text-slate-500 dark:text-slate-400 max-w-md mb-10 text-lg leading-relaxed">{description}</p>
-      
-      <Link to="/" className="px-6 py-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
-        <ArrowLeft size={18} />
-        Back to Dashboard
+      <h1 className="text-3xl font-bold text-[var(--text-primary)]">{title}</h1>
+      <p className="mt-1 max-w-measure text-sm text-[var(--text-secondary)]">{description}</p>
+
+      <Link to="/" className="chef-target chef-pressable mt-4 flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-raised)] px-4 text-sm font-semibold text-[var(--text-primary)]">
+        <ArrowLeft aria-hidden size={18} />
+        Back to tools
       </Link>
     </div>
   );

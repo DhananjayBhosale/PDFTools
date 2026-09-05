@@ -14,20 +14,74 @@ interface UseDragReorderOptions<T> {
   items: T[];
   onReorder: (newItems: T[]) => void;
   keyExtractor: (item: T) => string;
+  /**
+   * The element that actually scrolls the list. Omit it and the page scrolls,
+   * which is what Merge and Reorder do. Image to PDF lays its pages out inside
+   * a bounded canvas, so the page never moves and its own scroller has to be
+   * the one that drives auto-scroll and slot geometry.
+   */
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function useDragReorder<T>({ items, onReorder, keyExtractor }: UseDragReorderOptions<T>) {
+export function useDragReorder<T>({
+  items,
+  onReorder,
+  keyExtractor,
+  scrollContainerRef,
+}: UseDragReorderOptions<T>) {
   // State
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overlayStyle, setOverlayStyle] = useState({ top: 0, left: 0, width: 0, height: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  /**
+   * The pointer, as something the overlay can render from. `pointerRef` alone is
+   * a mutation, so the overlay stayed where the drag began; the drag has to be
+   * visible under the finger from the first move.
+   */
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 
   // Refs
   const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
+  /**
+   * The native pointermove listener is installed once, on pointer down, so it
+   * keeps the closure from the render that started the drag. Everything that
+   * changes during a drag is therefore read from a ref, not from that closure:
+   * `setActiveId` had not committed yet when the listener was installed, so the
+   * reorder guard saw null and returned on every move of the first drag.
+   */
+  const draggedIdRef = useRef<string | null>(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const onReorderRef = useRef(onReorder);
+  onReorderRef.current = onReorder;
+  const keyExtractorRef = useRef(keyExtractor);
+  keyExtractorRef.current = keyExtractor;
+  /** A reorder moved the nodes, so the frozen slots describe the old order. */
+  const needsRemeasureRef = useRef(false);
   const slotsRef = useRef<Slot[]>([]);
   const scrollIntervalRef = useRef<number | null>(null);
   const pointerRef = useRef<{ x: number, y: number } | null>(null);
   const isDraggingRef = useRef(false);
+  const moveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+  const upHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+
+  const getScroller = useCallback((): HTMLElement | null => scrollContainerRef?.current ?? null, [scrollContainerRef]);
+
+  /**
+   * Viewport coordinates converted into the scroller's own content space, so a
+   * slot recorded before the scroll still describes the same content after it.
+   */
+  const toContentSpace = useCallback((clientX: number, clientY: number) => {
+    const scroller = getScroller();
+    if (!scroller) {
+      return { x: clientX + window.scrollX, y: clientY + window.scrollY };
+    }
+    const bounds = scroller.getBoundingClientRect();
+    return {
+      x: clientX - bounds.left + scroller.scrollLeft,
+      y: clientY - bounds.top + scroller.scrollTop,
+    };
+  }, [getScroller]);
 
   // Helper to register refs
   const registerItem = useCallback((id: string, node: HTMLElement | null) => {
@@ -41,54 +95,113 @@ export function useDragReorder<T>({ items, onReorder, keyExtractor }: UseDragReo
     const slots = slotsRef.current;
     if (slots.length === 0) return 0;
 
-    // Find the slot closest to the cursor
-    // For grids, we check row then column
-    // For lists, it effectively works same way (one item per row or one row of items)
-    
-    // Simple distance heuristic usually fails for variable sized grids. 
-    // We use the "Row/Col" logic from the previous ReorderPDF implementation.
-    
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
-      
-      // Check if we are "before" this slot visually
-      // In a grid (LTR, TTB):
-      // If cursor Y is significantly above slot top
+
+      // Above this row entirely.
       if (docY < s.top) return i;
-      
-      // If cursor is within the vertical band of this row
+
+      // Inside this row: decide by the horizontal midpoint.
       if (docY >= s.top && docY <= s.bottom) {
-        // Check Horizontal
         if (docX < s.centerX) return i;
       }
     }
-    
+
     return slots.length;
   };
 
   const performReorder = useCallback((clientX: number, clientY: number) => {
-    if (!isDraggingRef.current || !activeId) return;
+    const draggedId = draggedIdRef.current;
+    if (!isDraggingRef.current || !draggedId) return;
 
-    const docX = clientX + window.scrollX;
-    const docY = clientY + window.scrollY;
+    const { x: docX, y: docY } = toContentSpace(clientX, clientY);
 
-    const fromIndex = items.findIndex(item => keyExtractor(item) === activeId);
+    // The live list, not the one this drag started with: a multi-position drag
+    // reorders as it goes, and each further move works from the new order.
+    const currentItems = itemsRef.current;
+    const key = keyExtractorRef.current;
+
+    const fromIndex = currentItems.findIndex(item => key(item) === draggedId);
     if (fromIndex === -1) return;
 
     const targetIndex = calculateTargetIndex(docX, docY);
 
-    if (targetIndex !== fromIndex && targetIndex <= items.length) {
-      const newItems = [...items];
+    if (targetIndex !== fromIndex && targetIndex <= currentItems.length) {
+      const newItems = [...currentItems];
       const [moved] = newItems.splice(fromIndex, 1);
       newItems.splice(targetIndex, 0, moved);
-      onReorder(newItems);
+      needsRemeasureRef.current = true;
+      onReorderRef.current(newItems);
     }
-  }, [items, activeId, onReorder, keyExtractor]);
+  }, [toContentSpace]);
+
+  /** Re-reads every slot in content space. Cheap enough to run while scrolling. */
+  const measureSlots = useCallback((draggedId: string) => {
+    const slots: Slot[] = [];
+    itemsRef.current.forEach(item => {
+      const itemId = keyExtractorRef.current(item);
+      if (itemId === draggedId) return; // No slot for the dragged item itself.
+
+      const node = itemRefs.current.get(itemId);
+      if (!node) return;
+      const r = node.getBoundingClientRect();
+      const topLeft = toContentSpace(r.left, r.top);
+      const bottomRight = toContentSpace(r.right, r.bottom);
+      slots.push({
+        id: itemId,
+        top: topLeft.y,
+        bottom: bottomRight.y,
+        left: topLeft.x,
+        right: bottomRight.x,
+        centerX: topLeft.x + r.width / 2,
+        centerY: topLeft.y + r.height / 2,
+      });
+    });
+
+    // Sort visually so linear index mapping matches visual flow.
+    slots.sort((a, b) => {
+      if (Math.abs(a.top - b.top) > 10) return a.top - b.top;
+      return a.left - b.left;
+    });
+
+    slotsRef.current = slots;
+    needsRemeasureRef.current = false;
+  }, [toContentSpace]);
+
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    const draggedId = draggedIdRef.current;
+    if (!isDraggingRef.current || !draggedId) return;
+    pointerRef.current = { x: e.clientX, y: e.clientY };
+    setPointer({ x: e.clientX, y: e.clientY });
+    // The previous move reordered the list, and the browser has painted it
+    // since, so re-read the slots before deciding where this move lands.
+    if (needsRemeasureRef.current) measureSlots(draggedId);
+    performReorder(e.clientX, e.clientY);
+  }, [measureSlots, performReorder]);
+
+  const handlePointerUp = useCallback(() => {
+    isDraggingRef.current = false;
+    stopAutoScroll();
+    draggedIdRef.current = null;
+    needsRemeasureRef.current = false;
+    setActiveId(null);
+    slotsRef.current = [];
+    pointerRef.current = null;
+    setPointer(null);
+
+    if (moveHandlerRef.current) window.removeEventListener('pointermove', moveHandlerRef.current);
+    if (upHandlerRef.current) {
+      window.removeEventListener('pointerup', upHandlerRef.current);
+      window.removeEventListener('pointercancel', upHandlerRef.current);
+    }
+    moveHandlerRef.current = null;
+    upHandlerRef.current = null;
+  }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent | React.MouseEvent, id: string) => {
     // Only left click
     if ('button' in e && e.button !== 0) return;
-    
+
     e.preventDefault();
     e.stopPropagation();
 
@@ -96,9 +209,12 @@ export function useDragReorder<T>({ items, onReorder, keyExtractor }: UseDragReo
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
-    
-    // Capture Drag Start
+
+    // Capture Drag Start. The ref is set before the listener is installed, so
+    // the very first pointermove already knows what is being dragged.
     isDraggingRef.current = true;
+    draggedIdRef.current = id;
+    needsRemeasureRef.current = false;
     setActiveId(id);
     setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     setOverlayStyle({
@@ -108,93 +224,52 @@ export function useDragReorder<T>({ items, onReorder, keyExtractor }: UseDragReo
       height: rect.height
     });
     pointerRef.current = { x: e.clientX, y: e.clientY };
+    setPointer({ x: e.clientX, y: e.clientY });
 
-    // Freeze Slots
-    // We calculate slots based on the CURRENT layout order
-    const slots: Slot[] = [];
-    items.forEach(item => {
-      const itemId = keyExtractor(item);
-      if (itemId === id) return; // Don't make a slot for the dragged item itself
-      
-      const node = itemRefs.current.get(itemId);
-      if (node) {
-        const r = node.getBoundingClientRect();
-        slots.push({
-          id: itemId,
-          top: r.top + window.scrollY,
-          bottom: r.bottom + window.scrollY,
-          left: r.left + window.scrollX,
-          right: r.right + window.scrollX,
-          centerX: r.left + r.width / 2 + window.scrollX,
-          centerY: r.top + r.height / 2 + window.scrollY
-        });
-      }
-    });
-    
-    // Sort slots visually to ensure linear index mapping matches visual flow
-    slots.sort((a, b) => {
-      // Row priority with tolerance
-      if (Math.abs(a.top - b.top) > 10) return a.top - b.top;
-      return a.left - b.left;
-    });
-    
-    slotsRef.current = slots;
+    measureSlots(id);
 
-    // Attach Listeners
+    // Attach Listeners. Held in refs so the exact same function is removed,
+    // whichever render produced it.
+    moveHandlerRef.current = handlePointerMove;
+    upHandlerRef.current = handlePointerUp;
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
-    
-    startAutoScroll();
-  }, [items, keyExtractor]);
+    window.addEventListener('pointercancel', handlePointerUp);
 
-  const handlePointerMove = useCallback((e: PointerEvent) => {
-    if (!isDraggingRef.current) return;
-    pointerRef.current = { x: e.clientX, y: e.clientY };
-    
-    // Update Overlay
-    // We don't setState activeId or offset here to avoid re-renders,
-    // but we do update overlayStyle if we want it controlled by React state.
-    // For perf, we could use a ref for the overlay DOM, but React state is fine for <60fps updates usually.
-    // We'll update state to move the overlay.
-    // Actually, let's optimize: performReorder depends on state.
-    
-    performReorder(e.clientX, e.clientY);
-  }, [performReorder]);
-
-  const handlePointerUp = useCallback(() => {
-    isDraggingRef.current = false;
-    stopAutoScroll();
-    setActiveId(null);
-    slotsRef.current = [];
-    
-    window.removeEventListener('pointermove', handlePointerMove);
-    window.removeEventListener('pointerup', handlePointerUp);
-  }, []);
+    startAutoScroll(id);
+  }, [measureSlots, handlePointerMove, handlePointerUp]);
 
   // --- AUTO SCROLL ---
 
-  const startAutoScroll = () => {
+  const startAutoScroll = (draggedId: string) => {
     if (scrollIntervalRef.current) return;
 
     const scrollLoop = () => {
       if (!pointerRef.current || !isDraggingRef.current) return;
-      
+
       const { x, y } = pointerRef.current;
-      const h = window.innerHeight;
+      const scroller = getScroller();
       const zone = 100;
-      
+
+      // The edges that matter are the scroller's own edges, not the window's.
+      const topEdge = scroller ? scroller.getBoundingClientRect().top : 0;
+      const bottomEdge = scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight;
+
       let speed = 0;
-      if (y < zone) speed = -(zone - y) * 0.3;
-      else if (y > h - zone) speed = (y - (h - zone)) * 0.3;
+      if (y < topEdge + zone) speed = -((topEdge + zone) - y) * 0.3;
+      else if (y > bottomEdge - zone) speed = (y - (bottomEdge - zone)) * 0.3;
 
       if (speed !== 0) {
-        window.scrollBy(0, speed);
+        if (scroller) scroller.scrollBy(0, speed);
+        else window.scrollBy(0, speed);
+        // Content moved under the pointer, so the frozen slots are stale.
+        measureSlots(draggedIdRef.current ?? draggedId);
         performReorder(x, y);
       }
-      
+
       scrollIntervalRef.current = requestAnimationFrame(scrollLoop);
     };
-    
+
     scrollIntervalRef.current = requestAnimationFrame(scrollLoop);
   };
 
@@ -209,8 +284,8 @@ export function useDragReorder<T>({ items, onReorder, keyExtractor }: UseDragReo
     registerItem,
     overlayStyle: {
       ...overlayStyle,
-      top: (pointerRef.current?.y ?? 0) - dragOffset.y,
-      left: (pointerRef.current?.x ?? 0) - dragOffset.x,
+      top: pointer ? pointer.y - dragOffset.y : overlayStyle.top,
+      left: pointer ? pointer.x - dragOffset.x : overlayStyle.left,
     }
   };
 }

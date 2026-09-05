@@ -12,45 +12,61 @@ interface ZoomControlsProps {
   className?: string;
 }
 
-export const ZoomControls: React.FC<ZoomControlsProps> = ({ 
-  zoom, onZoomIn, onZoomOut, onReset, min = 0.5, max = 2.0, className = '' 
+/**
+ * The reader's zoom cluster, at the Android reader's density.
+ *
+ * Each control's visual box is 36px tall, which is what makes the cluster a
+ * 40px strip rather than the 58px slab a 48px visual box produced. The pressable
+ * region still clears the 48px floor, and it is extended only on the vertical
+ * axis: these buttons sit shoulder to shoulder, so growing their width would let
+ * one steal the next one's edge. Width is held at the floor instead, so every
+ * control keeps a separate 48x48 region.
+ */
+const controlClass =
+  'chef-pressable chef-hit-y grid h-9 w-touch shrink-0 place-items-center rounded-[var(--radius-control)] '
+  + 'text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-sunken)] disabled:opacity-55';
+
+export const ZoomControls: React.FC<ZoomControlsProps> = ({
+  zoom, onZoomIn, onZoomOut, onReset, min = 0.5, max = 2.0, className = ''
 }) => {
   return (
-    <div className={`flex items-center gap-1 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-1 ${className}`}>
-      <button 
-        onClick={onZoomOut} 
+    <div
+      className={`inline-flex w-fit max-w-full items-center rounded-[var(--radius-field)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-0.5 ${className}`}
+    >
+      <button
+        type="button"
+        onClick={onZoomOut}
         disabled={zoom <= min}
-        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md text-slate-500 dark:text-slate-400 disabled:opacity-30 transition-colors"
-        aria-label="Zoom Out"
-        title="Zoom Out (-)"
+        className={controlClass}
+        aria-label="Zoom out"
       >
-        <Minus size={16} />
-      </button>
-      
-      <div className="w-12 text-center font-mono text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
-        {Math.round(zoom * 100)}%
-      </div>
-      
-      <button 
-        onClick={onZoomIn} 
-        disabled={zoom >= max}
-        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md text-slate-500 dark:text-slate-400 disabled:opacity-30 transition-colors"
-        aria-label="Zoom In"
-        title="Zoom In (+)"
-      >
-        <Plus size={16} />
+        <Minus aria-hidden size={18} />
       </button>
 
-      <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-      
-      <button 
-        onClick={onReset} 
-        disabled={zoom === 1}
-        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md text-slate-500 dark:text-slate-400 disabled:opacity-30 transition-colors"
-        aria-label="Reset Zoom"
-        title="Reset to 100%"
+      <span className="tabular w-11 text-center text-xs font-semibold text-[var(--text-primary)] select-none">
+        {Math.round(zoom * 100)}%
+      </span>
+
+      <button
+        type="button"
+        onClick={onZoomIn}
+        disabled={zoom >= max}
+        className={controlClass}
+        aria-label="Zoom in"
       >
-        <RotateCcw size={14} />
+        <Plus aria-hidden size={18} />
+      </button>
+
+      <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-[var(--border-hairline)]" />
+
+      <button
+        type="button"
+        onClick={onReset}
+        disabled={zoom === 1}
+        className={controlClass}
+        aria-label="Reset zoom to 100%"
+      >
+        <RotateCcw aria-hidden size={16} />
       </button>
     </div>
   );

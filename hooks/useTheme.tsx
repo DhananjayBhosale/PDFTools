@@ -1,30 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useCallback } from 'react';
+import { useAppearance } from './useAppearance';
 
-type Theme = 'light' | 'dark';
-
+/**
+ * Kept for the components that only need a light/dark switch. The preference
+ * itself, including "System", lives in {@link useAppearance}.
+ */
 export const useTheme = () => {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
-      if (saved === 'dark' || saved === 'light') return saved;
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
-  });
+  const { resolvedTheme, setTheme } = useAppearance();
 
-  useEffect(() => {
-    const root = window.document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+  const toggleTheme = useCallback(() => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+  }, [resolvedTheme, setTheme]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
-
-  return { theme, toggleTheme };
+  return { theme: resolvedTheme, toggleTheme };
 };

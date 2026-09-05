@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Full-screen DayNight reader. Edge to edge, with the system bars drawn
+         over a surface that already matches the product. The Material 3 parent
+         is what the bundled AndroidX PDF resources resolve against: they read
+         colorOnSurface, the surface containers and the Material text
+         appearances, none of which the AppCompat parent defines. Every PDF Chef
+         value below still overrides it, so the reader looks unchanged. -->
+    <style name="PdfReaderTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="colorAccent">@color/pdf_reader_accent</item>
+        <item name="android:windowBackground">@color/pdf_reader_surface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- The tool sheet is a plain dialog: bottom anchored, no custom animation,
+         so it obeys whatever motion setting the device is already using. -->
+    <style name="PdfReaderToolsDialog" parent="Theme.AppCompat.DayNight.Dialog">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="colorAccent">@color/pdf_reader_accent</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
+</resources>

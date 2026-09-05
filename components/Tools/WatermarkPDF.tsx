@@ -2,31 +2,160 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Droplets, Loader2, Maximize2, Move, X } from 'lucide-react';
+import { Droplets, Loader2, Maximize2, X } from 'lucide-react';
 import { FileUpload } from '../UI/FileUpload';
-import { ChefSlider } from '../UI/ChefSlider';
+import { ChefSliderField } from '../UI/ChefSlider';
+import { Portal } from '../UI/Primitives';
+import { StatusToast } from '../UI/StatusToast';
+import { ToolHeader, ToolPanel, ToolShell } from '../UI/ToolLayout';
 import { PDFFile, ProcessingStatus } from '../../types';
 import { addWatermarkToPDF } from '../../services/pdfDocument';
-import { downloadBlob } from '../../services/pdfShared';
+import { downloadBlob, isPdfFile } from '../../services/pdfShared';
 import { loadPDFDocument, renderPageAsImage } from '../../services/pdfBrowser';
+import {
+  DEFAULT_WATERMARK_COLOR_HEX,
+  DEFAULT_WATERMARK_OPACITY,
+  DEFAULT_WATERMARK_ROTATION_DEGREES,
+  DEFAULT_WATERMARK_SIZE,
+  DEFAULT_WATERMARK_TEXT,
+  DEFAULT_WATERMARK_X_PERCENT,
+  DEFAULT_WATERMARK_Y_PERCENT,
+  MAX_PDF_TEXT_LENGTH,
+  WATERMARK_MAX_ROTATION_DEGREES,
+  WATERMARK_MAX_SIZE,
+  WATERMARK_MIN_OPACITY,
+  WATERMARK_MIN_ROTATION_DEGREES,
+  WATERMARK_MIN_SIZE,
+  androidExportFileName,
+  sanitizeWatermarkText,
+  watermarkLayout,
+} from '../../services/androidParity';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const clampPercent = (value: number) => clamp(value, 2, 98);
+
+/**
+ * Helvetica-Bold advance widths, as a fraction of the font size, so the preview measures the mark
+ * with the same metrics the export uses. Canvas would measure whatever font the browser picked,
+ * which is how a preview drifts from its own output.
+ */
+const HELVETICA_BOLD_AVERAGE_ADVANCE = 0.584;
+const measureWatermarkTextWidth = (value: string, fontSize: number) =>
+  value.length * fontSize * HELVETICA_BOLD_AVERAGE_ADVANCE;
+
+/**
+ * Draws the overlay from the export layout, scaled by its own measured pixel size.
+ *
+ * It measures itself because the mark's font size is in page points: without the real pixel height
+ * of the preview box there is no honest conversion, and guessing one is how a preview stops
+ * predicting its output.
+ */
+const WatermarkPreviewSurface: React.FC<{
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  large: boolean;
+  aspectRatio: string;
+  isDragging: boolean;
+  imageUrl: string | null;
+  layout: ReturnType<typeof watermarkLayout>;
+  pageWidth: number;
+  pageHeight: number;
+  color: string;
+  opacity: number;
+  onPointerDown: (event: React.PointerEvent) => void;
+}> = ({
+  containerRef,
+  large,
+  aspectRatio,
+  isDragging,
+  imageUrl,
+  layout,
+  pageWidth,
+  pageHeight,
+  color,
+  opacity,
+  onPointerDown,
+}) => {
+  const [boxSize, setBoxSize] = useState({ width: 0, height: 0 });
+
+  const attachRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      if (node) {
+        const rect = node.getBoundingClientRect();
+        setBoxSize({ width: rect.width, height: rect.height });
+      }
+    },
+    [containerRef],
+  );
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      setBoxSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [containerRef, imageUrl, large]);
+
+  const scaleY = boxSize.height > 0 ? boxSize.height / Math.max(1, pageHeight) : 0;
+
+  return (
+    <div
+      ref={attachRef}
+      className={`relative ${large ? 'h-full max-w-full' : 'w-full'} overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-white dark:bg-slate-900 ${
+        isDragging ? 'cursor-grabbing' : 'cursor-grab'
+      }`}
+      style={{ aspectRatio, touchAction: 'none' }}
+      onPointerDown={onPointerDown}
+    >
+      {imageUrl ? (
+        <img src={imageUrl} alt="Watermark preview" className="h-full w-full object-contain" draggable={false} />
+      ) : (
+        <div className="flex h-full items-center justify-center text-xs text-[var(--text-tertiary)]">No preview</div>
+      )}
+
+      {layout && scaleY > 0 && (
+        <div className="pointer-events-none absolute inset-0">
+          <div
+            className="absolute whitespace-nowrap font-bold tracking-wide"
+            style={{
+              left: `${(layout.centerX / Math.max(1, pageWidth)) * 100}%`,
+              top: `${(1 - layout.centerY / Math.max(1, pageHeight)) * 100}%`,
+              // Screen Y runs the other way, so the same angle has to be negated to look the same.
+              transform: `translate(-50%, -50%) rotate(${-layout.rotationDegrees}deg)`,
+              color,
+              opacity,
+              fontSize: `${layout.fontSize * scaleY}px`,
+              textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
+              userSelect: 'none',
+            }}
+          >
+            {layout.text}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const WatermarkPDF: React.FC = () => {
   const [file, setFile] = useState<PDFFile | null>(null);
-  const [text, setText] = useState('CONFIDENTIAL');
-  const [size, setSize] = useState(48);
-  const [opacity, setOpacity] = useState(0.3);
-  const [rotation, setRotation] = useState(-45);
-  const [color, setColor] = useState('#000000');
-  const [xPercent, setXPercent] = useState(50);
-  const [yPercent, setYPercent] = useState(50);
+  const [text, setText] = useState(DEFAULT_WATERMARK_TEXT);
+  const [size, setSize] = useState(DEFAULT_WATERMARK_SIZE);
+  const [opacity, setOpacity] = useState(DEFAULT_WATERMARK_OPACITY);
+  const [rotation, setRotation] = useState(DEFAULT_WATERMARK_ROTATION_DEGREES);
+  const [color, setColor] = useState(DEFAULT_WATERMARK_COLOR_HEX);
+  // Fractions of the page, 0-1, with Y measured from the bottom, matching the app's option string.
+  const [xPercent, setXPercent] = useState(DEFAULT_WATERMARK_X_PERCENT);
+  const [yPercent, setYPercent] = useState(DEFAULT_WATERMARK_Y_PERCENT);
 
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [showLargePreview, setShowLargePreview] = useState(false);
+  const largePreviewTriggerRef = useRef<HTMLButtonElement>(null);
+  const largePreviewCloseRef = useRef<HTMLButtonElement>(null);
+  const largePreviewRef = useRef<HTMLDivElement>(null);
   const [previewDimensions, setPreviewDimensions] = useState({ width: 595, height: 842 });
 
   const [isDragging, setIsDragging] = useState(false);
@@ -38,10 +167,69 @@ export const WatermarkPDF: React.FC = () => {
 
   const opacityPercent = Number((opacity * 100).toFixed(1));
   const previewAspect = useMemo(() => `${previewDimensions.width} / ${previewDimensions.height}`, [previewDimensions]);
-  const overlayFontPx = Math.max(10, Math.min(128, size * 0.55));
+
+  /**
+   * The exact layout the export will use, in page points. Reusing it for the overlay is what makes
+   * the preview honest about the rotated-bounding-box clamp and about rotation happening around
+   * the mark's centre.
+   */
+  const layout = useMemo(
+    () =>
+      watermarkLayout({
+        pageWidth: previewDimensions.width,
+        pageHeight: previewDimensions.height,
+        text,
+        fontSize: size,
+        rotationDegrees: rotation,
+        placement: { xPercent, yPercent },
+        measureTextWidth: measureWatermarkTextWidth,
+      }),
+    [previewDimensions.height, previewDimensions.width, rotation, size, text, xPercent, yPercent],
+  );
+
+  // Opening the preview after scrolling used to leave Close wherever the page
+  // happened to be. Portalled and viewport-fixed, it now behaves like every
+  // other modal: focus in, trapped, Escape out, focus restored.
+  useEffect(() => {
+    if (!showLargePreview) return undefined;
+    const opener = largePreviewTriggerRef.current;
+    const selector = 'button:not([disabled]), [href], input:not([disabled]), canvas, [tabindex]:not([tabindex="-1"])';
+    const focusables = (): HTMLElement[] =>
+      largePreviewRef.current ? Array.from(largePreviewRef.current.querySelectorAll<HTMLElement>(selector)) : [];
+    largePreviewCloseRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShowLargePreview(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      opener?.focus();
+    };
+  }, [showLargePreview]);
 
   const handleFilesSelected = (files: File[]) => {
-    if (files.length === 0 || files[0].type !== 'application/pdf') return;
+    if (files.length === 0 || !isPdfFile(files[0])) {
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Choose a PDF file to watermark.' });
+      return;
+    }
     const selected = files[0];
     setFile({
       id: uuidv4(),
@@ -49,17 +237,18 @@ export const WatermarkPDF: React.FC = () => {
       name: selected.name,
       size: selected.size,
     });
-    setXPercent(50);
-    setYPercent(50);
+    setXPercent(DEFAULT_WATERMARK_X_PERCENT);
+    setYPercent(DEFAULT_WATERMARK_Y_PERCENT);
     setShowLargePreview(false);
+    setStatus({ isProcessing: false, progress: 0, message: '' });
   };
 
   const handleApplyWatermark = async () => {
-    if (!file || !text.trim()) return;
+    if (!file || !sanitizeWatermarkText(text)) return;
     setStatus({ isProcessing: true, progress: 10, message: 'Applying watermark...' });
     try {
       const bytes = await addWatermarkToPDF(file.file, {
-        text: text.trim(),
+        text,
         size,
         opacity,
         rotation,
@@ -67,11 +256,20 @@ export const WatermarkPDF: React.FC = () => {
         xPercent,
         yPercent,
       });
-      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `watermarked-${file.name}`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      const outputName = androidExportFileName('watermark', file.name, 'pdf');
+      downloadBlob(new Blob([bytes], { type: 'application/pdf' }), outputName);
+      setStatus({
+        isProcessing: false,
+        progress: 100,
+        message: `Watermarked copy ready: ${outputName}.`,
+      });
     } catch (error) {
-      console.error(error);
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Failed to add watermark' });
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: error instanceof Error ? error.message : 'Failed to add watermark',
+      });
     }
   };
 
@@ -119,8 +317,15 @@ export const WatermarkPDF: React.FC = () => {
         previewUrlRef.current = rendered.objectUrl;
         setOriginalPreviewUrl(rendered.objectUrl);
         setPreviewDimensions({ width: rendered.width, height: rendered.height });
-      } catch (error) {
-        console.error(error);
+      } catch {
+        if (!cancelled) {
+          setStatus({
+            isProcessing: false,
+            progress: 0,
+            message: '',
+            error: 'Unable to render the preview. You can choose another PDF and try again.',
+          });
+        }
       } finally {
         if (typeof pdfDoc?.destroy === 'function') {
           void pdfDoc.destroy();
@@ -142,14 +347,13 @@ export const WatermarkPDF: React.FC = () => {
     const rect = container.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    const nextX = ((clientX - rect.left) / rect.width) * 100;
-    const nextY = ((clientY - rect.top) / rect.height) * 100;
-    setXPercent(clampPercent(nextX));
-    setYPercent(clampPercent(nextY));
+    // Pointer Y grows downwards; the option value is measured from the bottom of the page.
+    setXPercent(clamp((clientX - rect.left) / rect.width, 0, 1));
+    setYPercent(clamp(1 - (clientY - rect.top) / rect.height, 0, 1));
   }, []);
 
   const beginWatermarkDrag = (event: React.PointerEvent, container: HTMLDivElement | null) => {
-    if (!text.trim() || !container) return;
+    if (!sanitizeWatermarkText(text) || !container) return;
     event.preventDefault();
     event.stopPropagation();
 
@@ -185,90 +389,60 @@ export const WatermarkPDF: React.FC = () => {
     };
   }, [isDragging, placeWatermarkFromPointer]);
 
-  const watermarkOverlayStyle: React.CSSProperties = {
-    left: `${xPercent}%`,
-    top: `${yPercent}%`,
-    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-    color,
-    opacity,
-    fontSize: `${overlayFontPx}px`,
-    textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
-    userSelect: 'none',
-  };
-
   const renderPreviewCanvas = (containerRef: React.RefObject<HTMLDivElement | null>, large = false) => (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3">
+    <div className="rounded-[var(--radius-field)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)] p-2">
       <div className={`mx-auto ${large ? 'h-[70vh] max-h-[70vh] max-w-full' : 'w-full max-w-[460px]'}`}>
-        <div
-          ref={containerRef}
-          className={`relative ${large ? 'h-full max-w-full' : 'w-full'} overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 ${
-            isDragging ? 'cursor-grabbing' : 'cursor-grab'
-          }`}
-          style={{ aspectRatio: previewAspect, touchAction: 'none' }}
+        <WatermarkPreviewSurface
+          containerRef={containerRef}
+          large={large}
+          aspectRatio={previewAspect}
+          isDragging={isDragging}
+          imageUrl={originalPreviewUrl}
+          layout={layout}
+          pageWidth={previewDimensions.width}
+          pageHeight={previewDimensions.height}
+          color={color}
+          opacity={opacity}
           onPointerDown={(event) => beginWatermarkDrag(event, containerRef.current)}
-        >
-          {originalPreviewUrl ? (
-            <img src={originalPreviewUrl} alt="Watermark preview" className="h-full w-full object-contain" draggable={false} />
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs text-slate-400">No preview</div>
-          )}
-
-          {text.trim() && (
-            <div className="pointer-events-none absolute inset-0">
-              <div className="absolute whitespace-nowrap font-bold tracking-wide" style={watermarkOverlayStyle}>
-                {text}
-              </div>
-            </div>
-          )}
-        </div>
+        />
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <span className="inline-flex items-center gap-1">
-          <Move size={12} /> Drag text to place watermark
-        </span>
-        <span>
-          X {xPercent.toFixed(1)}% • Y {yPercent.toFixed(1)}%
-        </span>
-      </div>
+      <p className="tabular mt-1.5 text-right text-xs text-[var(--text-secondary)]">
+        X {(xPercent * 100).toFixed(1)}% • Y {(yPercent * 100).toFixed(1)}%
+      </p>
     </div>
   );
 
   return (
-    <div className="max-w-5xl mx-auto py-12 px-4">
-      <div className="mb-8">
-        <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
-          ← Back to Dashboard
-        </Link>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Watermark PDF</h1>
-        <p className="text-slate-500 dark:text-slate-400">Add a text watermark, place it anywhere, then export.</p>
-      </div>
+    <ToolShell width="wide" centered={!file}>
+      <ToolHeader title="Watermark PDF" />
 
       <AnimatePresence mode="wait">
         {!file ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-3xl mx-auto">
-            <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to add watermark" />
+            <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Choose a PDF to watermark" />
           </motion.div>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-6 lg:grid-cols-[1fr_420px]">
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_420px]">
+            <ToolPanel className="order-2 min-w-0 space-y-3 lg:order-1">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Watermark text</label>
+                <label className="block type-footnote font-semibold text-[var(--text-secondary)] mb-1">Watermark text</label>
                 <input
                   value={text}
                   onChange={(event) => setText(event.target.value)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-slate-900 dark:text-white outline-none focus:border-cyan-500"
-                  placeholder="CONFIDENTIAL"
+                  maxLength={MAX_PDF_TEXT_LENGTH}
+                  className="chef-field h-10 w-full px-3 text-sm"
+                  placeholder={DEFAULT_WATERMARK_TEXT}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Size ({Number.isInteger(size) ? size : size.toFixed(1)} pt)
-                </label>
-                <ChefSlider
-                  min={8}
-                  max={140}
+                <ChefSliderField
+                  label="Size"
+                  suffix="pt"
+                  decimals={1}
+                  min={WATERMARK_MIN_SIZE}
+                  max={WATERMARK_MAX_SIZE}
                   step={0.5}
                   value={size}
                   onChange={setSize}
@@ -277,9 +451,11 @@ export const WatermarkPDF: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Opacity ({opacityPercent}%)</label>
-                <ChefSlider
-                  min={5}
+                <ChefSliderField
+                  label="Opacity"
+                  suffix="%"
+                  decimals={1}
+                  min={WATERMARK_MIN_OPACITY * 100}
                   max={100}
                   step={0.5}
                   value={opacityPercent}
@@ -289,12 +465,12 @@ export const WatermarkPDF: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Rotation ({Number.isInteger(rotation) ? rotation : rotation.toFixed(1)}°)
-                </label>
-                <ChefSlider
-                  min={-180}
-                  max={180}
+                <ChefSliderField
+                  label="Rotation"
+                  suffix="°"
+                  decimals={1}
+                  min={WATERMARK_MIN_ROTATION_DEGREES}
+                  max={WATERMARK_MAX_ROTATION_DEGREES}
                   step={0.5}
                   value={rotation}
                   onChange={setRotation}
@@ -302,42 +478,42 @@ export const WatermarkPDF: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Horizontal ({xPercent.toFixed(1)}%)</label>
-                  <ChefSlider min={2} max={98} step={0.1} value={xPercent} onChange={setXPercent} ariaLabel="Watermark horizontal position" />
+                  <ChefSliderField label="Horizontal" suffix="%" decimals={1} min={0} max={100} step={0.1} value={xPercent * 100} onChange={(next) => setXPercent(next / 100)} ariaLabel="Watermark horizontal position" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Vertical ({yPercent.toFixed(1)}%)</label>
-                  <ChefSlider min={2} max={98} step={0.1} value={yPercent} onChange={setYPercent} ariaLabel="Watermark vertical position" />
+                  <ChefSliderField label="Vertical" suffix="%" decimals={1} min={0} max={100} step={0.1} value={yPercent * 100} onChange={(next) => setYPercent(next / 100)} ariaLabel="Watermark vertical position" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Color</label>
+                <label className="block type-footnote font-semibold text-[var(--text-secondary)] mb-1">Color</label>
                 <input
                   type="color"
                   value={color}
                   onChange={(event) => setColor(event.target.value)}
-                  className="h-11 w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent"
+                  className="h-10 w-20 rounded-[var(--radius-control)] border border-[var(--border-hairline)] bg-transparent"
                 />
               </div>
-            </div>
+            </ToolPanel>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-4 h-fit">
+            <ToolPanel className="order-1 h-fit space-y-2.5 lg:order-2">
               <div className="flex items-center justify-between">
-                <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Live Preview (Page 1)</div>
+                <div className="type-caption uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Live preview · page 1</div>
                 <button
+                  ref={largePreviewTriggerRef}
+                  type="button"
                   onClick={() => setShowLargePreview(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="chef-pressable chef-hit-y inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--border-strong)] px-2.5 py-1.5 type-footnote font-semibold text-[var(--text-secondary)] hover:border-[var(--accent-rest)]"
                 >
-                  <Maximize2 size={13} /> Open large preview
+                  <Maximize2 aria-hidden size={16} /> Large preview
                 </button>
               </div>
 
               {previewLoading ? (
-                <div className="h-56 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500">
-                  <Loader2 className="animate-spin mr-2" size={16} /> Rendering...
+                <div className="flex items-center justify-center rounded-[var(--radius-control)] border border-[var(--border-hairline)] py-6 text-sm text-[var(--text-secondary)]">
+                  <Loader2 aria-hidden className="mr-2 animate-spin" size={18} /> Rendering...
                 </div>
               ) : (
                 renderPreviewCanvas(inlinePreviewRef)
@@ -345,60 +521,66 @@ export const WatermarkPDF: React.FC = () => {
 
               <button
                 onClick={handleApplyWatermark}
-                disabled={status.isProcessing || !text.trim()}
-                className="w-full px-5 py-3 rounded-xl font-semibold text-white bg-cyan-600 hover:bg-cyan-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={status.isProcessing || !sanitizeWatermarkText(text)}
+                className="chef-target chef-pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--accent-rest)] px-5 font-semibold text-[var(--text-on-accent)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-55"
               >
-                {status.isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Droplets size={18} />}
-                <span>Apply Watermark</span>
+                {status.isProcessing ? <Loader2 aria-hidden className="animate-spin" size={18} /> : <Droplets aria-hidden size={18} />}
+                <span>Export watermarked PDF</span>
               </button>
-              <button onClick={() => setFile(null)} className="w-full text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 py-1.5">
+              <button type="button" onClick={() => setFile(null)} className="chef-target w-full text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 Choose another file
               </button>
-            </div>
+            </ToolPanel>
           </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {showLargePreview && file && (
+          <Portal>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+            ref={largePreviewRef}
+            className="chef-safe-x chef-safe-bottom fixed inset-0 z-[100] flex items-center justify-center p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] sm:p-6"
           >
             <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowLargePreview(false)} aria-label="Close large preview" />
             <motion.div
               initial={{ scale: 0.98, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.98, opacity: 0 }}
-              className="relative z-10 w-full max-w-6xl rounded-2xl border border-slate-700 bg-slate-900 p-4 sm:p-5"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="large-watermark-preview-title"
+              className="relative z-10 max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-y-auto rounded-2xl border border-paper-500 bg-slate-900 p-4 sm:p-5"
             >
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-white">Large Watermark Preview</div>
-                  <div className="text-xs text-slate-400">Drag text directly on the page to position watermark.</div>
+                  <div id="large-watermark-preview-title" className="text-sm font-semibold text-white">Large preview</div>
+                  {/* Kept: inside the modal, dragging is the only way to place
+                      the text — the position sliders are behind it. */}
+                  <div className="type-caption text-paper-400">Drag the text to position it.</div>
                 </div>
                 <button
+                  ref={largePreviewCloseRef}
+                  type="button"
                   onClick={() => setShowLargePreview(false)}
-                  className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"
-                  aria-label="Close"
+                  className="chef-target chef-pressable grid shrink-0 place-items-center rounded-lg text-paper-300 hover:bg-slate-800 hover:text-white"
+                  aria-label="Close large preview"
                 >
-                  <X size={20} />
+                  <X aria-hidden size={20} />
                 </button>
               </div>
 
               {renderPreviewCanvas(modalPreviewRef, true)}
             </motion.div>
           </motion.div>
+          </Portal>
         )}
       </AnimatePresence>
 
-      {status.error && (
-        <div className="fixed bottom-3 right-3 bg-rose-600 text-white px-3 py-2 rounded-lg text-sm shadow-lg">
-          {status.error}
-        </div>
-      )}
-    </div>
+      <StatusToast status={status} />
+    </ToolShell>
   );
 };

@@ -1,0 +1,24 @@
+[
+  {
+    "id": 1,
+    "displayName": "Synthetic 1.pdf",
+    "toolName": "Merge PDF",
+    "sizeBytes": 8001,
+    "createdAtMillis": 1700000000001,
+    "storedFileName": "synthetic-1.pdf",
+    "mimeType": "application/pdf",
+    "isDirectory": false,
+    "itemCount": 1
+  },
+  {
+    "id": 2,
+    "displayName": "Synthetic 2.pdf",
+    "toolName": "Split PDF",
+    "sizeBytes": 8002,
+    "createdAtMillis": 1700000000002,
+    "storedFileName": "synthetic-2.pdf",
+    "mimeType": "application/pdf",
+    "isDirectory": false,
+    "itemCount": 1
+  }
+]

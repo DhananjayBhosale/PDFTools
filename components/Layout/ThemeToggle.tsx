@@ -1,17 +1,19 @@
 import React from 'react';
-import { Sun, Moon } from 'lucide-react';
-import { useTheme } from '../../hooks/useTheme';
+import { Moon, Sun } from 'lucide-react';
+import { useAppearance } from '../../hooks/useAppearance';
 
-export const ThemeToggle = () => {
-  const { theme, toggleTheme } = useTheme();
+export const ThemeToggle: React.FC = () => {
+  const { resolvedTheme, setTheme } = useAppearance();
+  const next = resolvedTheme === 'dark' ? 'light' : 'dark';
 
   return (
     <button
-      onClick={toggleTheme}
-      className="rounded-lg bg-gray-100 p-2 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-yellow-400 dark:hover:bg-gray-700"
-      aria-label="Toggle theme"
+      type="button"
+      onClick={() => setTheme(next)}
+      aria-label={`Switch to ${next} appearance`}
+      className="chef-pressable chef-target grid place-items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)]"
     >
-      {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+      {resolvedTheme === 'light' ? <Moon aria-hidden size={18} /> : <Sun aria-hidden size={18} />}
     </button>
   );
 };

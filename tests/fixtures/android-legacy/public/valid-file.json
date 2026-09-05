@@ -1,0 +1,10 @@
+{
+  "kind": "file",
+  "ref": "a1_1",
+  "displayName": "Synthetic 001.pdf",
+  "toolId": "merge",
+  "createdAt": 1700000000001,
+  "available": true,
+  "mimeType": "application/pdf",
+  "sizeBytes": 8001
+}

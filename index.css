@@ -2,22 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Tokens live in assets/design-tokens.css and are imported ahead of this file by
+ * index.tsx. This file is the application layer: root typography, the chrome
+ * materials, and the primitives shared across every surface.
+ */
+
 :root {
   color-scheme: light;
-  --chef-bg: #f6f1e8;
-  --chef-fg: #0f172a;
-  --chef-muted: #5f6877;
-  --chef-grid-color: rgba(15, 23, 42, 0.07);
-  --chef-selection: rgba(34, 211, 238, 0.24);
+  --chef-bg: var(--surface-canvas);
+  --chef-fg: var(--text-primary);
+  --chef-muted: var(--text-secondary);
+  --chef-selection: rgba(220, 32, 32, 0.2);
+  --chef-keyboard-inset: 0px;
 }
 
 .dark {
   color-scheme: dark;
-  --chef-bg: #07111b;
-  --chef-fg: #f8fafc;
-  --chef-muted: #94a3b8;
-  --chef-grid-color: rgba(148, 163, 184, 0.08);
-  --chef-selection: rgba(34, 211, 238, 0.2);
+  --chef-selection: rgba(255, 77, 82, 0.26);
 }
 
 html,
@@ -26,47 +28,623 @@ body,
   min-height: 100%;
 }
 
+/* `vh` is the fallback; `dvh` follows collapsing browser chrome and resized
+   software keyboards on current mobile engines. */
+.chef-viewport-floor {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 html {
-  font-size: 15px;
+  /* 16px base times the readable-text-size preference. Everything sized in rem
+     follows, which is how Dynamic Type is honoured on the web. */
+  font-size: calc(100% * var(--text-scale, 1));
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  background: var(--chef-bg);
-  color: var(--chef-fg);
-  font-family: "Manrope", "Inter", "Segoe UI", sans-serif;
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* No pull-to-refresh bounce on the document; momentum belongs to scrollers. */
+  overscroll-behavior-y: none;
+}
+
+html[data-interface-font='inter'] body,
+html[data-interface-font='inter'] input,
+html[data-interface-font='inter'] select,
+html[data-interface-font='inter'] textarea,
+html[data-interface-font='inter'] button {
+  font-family: 'Inter Variable', 'Inter', var(--font-system);
+}
+
+html[data-interface-font='manrope'] body,
+html[data-interface-font='manrope'] input,
+html[data-interface-font='manrope'] select,
+html[data-interface-font='manrope'] textarea,
+html[data-interface-font='manrope'] button {
+  font-family: 'Manrope Variable', 'Manrope', var(--font-system);
+}
+
+html[data-interface-font='system'] body,
+html[data-interface-font='system'] input,
+html[data-interface-font='system'] select,
+html[data-interface-font='system'] textarea,
+html[data-interface-font='system'] button {
+  font-family: var(--font-system);
+}
+
+html[data-interface-font='noto-sans'] body,
+html[data-interface-font='noto-sans'] input,
+html[data-interface-font='noto-sans'] select,
+html[data-interface-font='noto-sans'] textarea,
+html[data-interface-font='noto-sans'] button {
+  font-family: 'Noto Sans', var(--font-system);
+}
+
+html[data-interface-font='serif'] body,
+html[data-interface-font='serif'] input,
+html[data-interface-font='serif'] select,
+html[data-interface-font='serif'] textarea,
+html[data-interface-font='serif'] button {
+  font-family: Iowan Old Style, Palatino, Georgia, 'Times New Roman', serif;
+}
+
+html[data-interface-font='monospace'] body,
+html[data-interface-font='monospace'] input,
+html[data-interface-font='monospace'] select,
+html[data-interface-font='monospace'] textarea,
+html[data-interface-font='monospace'] button {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 ::selection {
   background: var(--chef-selection);
 }
 
-.chef-display {
-  font-family: "Cormorant Garamond", Georgia, serif;
+/* Size-specific tracking. A single letter-spacing value is wrong somewhere. */
+h1,
+.type-display {
+  letter-spacing: var(--type-display-tracking);
+  line-height: var(--type-display-leading);
+}
+
+h2,
+.type-title1 {
+  letter-spacing: var(--type-title1-tracking);
+  line-height: var(--type-title1-leading);
+}
+
+h3,
+.type-title2 {
+  letter-spacing: var(--type-title2-tracking);
+  line-height: var(--type-title2-leading);
+}
+
+h4,
+.type-title3 {
+  letter-spacing: var(--type-title3-tracking);
+  line-height: var(--type-title3-leading);
+}
+
+.type-footnote {
+  font-size: var(--type-footnote-size);
+  line-height: var(--type-footnote-leading);
+  letter-spacing: var(--type-footnote-tracking);
+}
+
+.type-caption {
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-leading);
+  letter-spacing: var(--type-caption-tracking);
   font-weight: 600;
-  letter-spacing: -0.045em;
 }
 
-.chef-grid {
-  background-image:
-    linear-gradient(to right, var(--chef-grid-color) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--chef-grid-color) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.12));
+/* Tabular figures wherever a size, count, or timestamp sits in a column. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
-.chef-ambient {
-  background:
-    radial-gradient(circle at 12% 18%, rgba(251, 191, 36, 0.16), transparent 24%),
-    radial-gradient(circle at 86% 14%, rgba(34, 211, 238, 0.2), transparent 30%),
-    radial-gradient(circle at 72% 82%, rgba(14, 165, 233, 0.14), transparent 22%);
-  animation: chef-float 18s ease-in-out infinite alternate;
+/* --- Focus: one visible ring everywhere, never removed --- */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* Route changes focus the main landmark for screen readers. Keep that semantic
+   focus without drawing a ring around the entire viewport; actionable controls
+   retain the visible focus rule above. */
+.chef-main-surface:focus-visible {
+  outline: none;
+}
+
+/* --- Chrome materials -----------------------------------------------------
+   Translucent layers with content scrolling underneath, per Apple's material
+   guidance. Both fall back to a solid surface where backdrop-filter is absent
+   or the user asked for reduced transparency. */
+
+.chef-chrome {
+  background: var(--surface-raised);
+  border-color: var(--border-hairline);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .chef-chrome {
+    background: var(--surface-chrome);
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+    backdrop-filter: saturate(180%) blur(22px);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .chef-chrome {
+    background: var(--surface-raised);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Once the readable-text size has grown the chrome past one line, a translucent
+   bar sits over too much copy to stay legible, so it goes solid. Keyed off the
+   appearance attribute rather than a rem media query: media-query rem resolves
+   against the initial root size and never sees the scaled one. */
+html[data-text-scale='large'] .chef-chrome,
+html[data-text-scale='larger'] .chef-chrome {
+  background: var(--surface-raised);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Scroll edge effect: content fades where it meets floating chrome, instead of
+   a hard 1px divider that is always drawn whether or not anything overlaps. */
+.chef-scroll-edge::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  height: 1px;
+  background: var(--border-hairline);
+  opacity: var(--chef-edge-opacity, 0);
+  transition: opacity var(--duration-transition) var(--ease-settle);
+  pointer-events: none;
+}
+
+.chef-scroll-edge-top::after {
+  bottom: 0;
+}
+
+/* --- Safe areas ----------------------------------------------------------- */
+
+.chef-safe-top {
+  padding-top: calc(var(--chef-safe-top-base, 0px) + env(safe-area-inset-top, 0px));
+}
+
+.chef-safe-bottom {
+  padding-bottom: calc(var(--chef-safe-bottom-base, 0px) + env(safe-area-inset-bottom, 0px));
+}
+
+.chef-safe-x {
+  padding-left: calc(var(--chef-safe-x-base, 0px) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--chef-safe-x-base, 0px) + env(safe-area-inset-right, 0px));
+}
+
+/* Preserve the existing spacing when a safe-area helper and a Tailwind padding
+   utility share one element. Without a base, the later helper would erase it. */
+.chef-safe-top[class~='py-5'] {
+  --chef-safe-top-base: var(--space-5);
+}
+
+.chef-safe-bottom[class~='p-5'] {
+  --chef-safe-bottom-base: var(--space-5);
+}
+
+.chef-safe-bottom[class~='p-4'] {
+  --chef-safe-bottom-base: var(--space-4);
+}
+
+.chef-safe-bottom[class~='pb-2'] {
+  --chef-safe-bottom-base: var(--space-2);
+}
+
+.chef-safe-x[class~='px-2'] {
+  --chef-safe-x-base: var(--space-2);
+}
+
+.chef-safe-x[class~='px-3'] {
+  --chef-safe-x-base: var(--space-3);
+}
+
+.chef-safe-x[class~='px-4'],
+.chef-safe-x[class~='p-4'] {
+  --chef-safe-x-base: var(--space-4);
+}
+
+.chef-safe-top[class~='py-2'] {
+  --chef-safe-top-base: var(--space-2);
+}
+
+.chef-safe-top[class~='py-3'] {
+  --chef-safe-top-base: var(--space-3);
+}
+
+.chef-safe-x[class~='px-6'] {
+  --chef-safe-x-base: var(--space-6);
+}
+
+/* Space reserved under scrolling content so the tab bar never covers the last
+   row, and so the software keyboard cannot bury the primary action. */
+/* The bar grows with the readable-text size, so the inset does too.
+   `--size-tab-bar-readable` is the bar's measured height; both this inset and
+   every floating surface read it, so they cannot disagree at large text. */
+.chef-tab-inset {
+  padding-bottom: calc(
+    var(--size-tab-bar-readable) + env(safe-area-inset-bottom, 0px) + var(--space-4) +
+      var(--chef-keyboard-inset, 0px)
+  );
+}
+
+/* The height a full-height tool workspace actually has. `100dvh` is that box
+   plus the tool nav bar above it and the tab bar below it, so a tool that asks
+   for the whole viewport pushes its page taller than the screen on a route with
+   nothing to scroll to, and anything centred inside starts most of a screen
+   down. The bars are measured from the tokens they are drawn from, so the two
+   cannot disagree: the nav bar is its Back control's touch floor plus the bar's
+   own 4px above and below, and the foot is the same reservation
+   `.chef-tab-inset` already makes. */
+.chef-tool-surface {
+  --chef-workspace-fill: calc(
+    100dvh - var(--size-touch-target) - var(--space-2) - env(safe-area-inset-top, 0px) -
+      var(--size-tab-bar-readable) - env(safe-area-inset-bottom, 0px) - var(--space-4) -
+      var(--chef-keyboard-inset, 0px)
+  );
+}
+
+@media (min-width: 768px) {
+  .chef-tool-surface {
+    /* Past md the tab bar is gone and the page keeps its own foot instead. */
+    --chef-workspace-fill: calc(
+      100dvh - var(--size-touch-target) - var(--space-2) - env(safe-area-inset-top, 0px) -
+        var(--space-10)
+    );
+  }
+}
+
+/* Only a loaded workspace claims that height, because its inner panel scrolls
+   against it. An empty state stays in flow: a drop zone centred in a full
+   screen is the void that pushed source selection below the fold. */
+.chef-workspace-fill {
+  height: var(--chef-workspace-fill, 100dvh);
+  min-height: var(--chef-workspace-fill, 100dvh);
+}
+
+/* A normal tool landing starts below the app bar without hugging it. This is a
+   deliberate upper-middle anchor: the picker feels centred, while the phone
+   does not waste half its useful height above a short panel. */
+@media (max-width: 767px) {
+  .chef-tool-shell.chef-tool-landing-centered,
+  .chef-tool-landing-centered:not(.chef-tool-shell) {
+    min-height: var(--chef-workspace-fill, auto);
+    display: grid;
+    align-content: safe center;
+    padding-top: 1rem !important;
+    padding-bottom: 4rem !important;
+  }
+
+  .chef-tool-shell.chef-tool-landing-centered > *,
+  .chef-tool-landing-centered:not(.chef-tool-shell) > * {
+    width: 100%;
+  }
+
+  .chef-tool-landing-centered [data-file-upload] {
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  /* Immersive workspaces do not have the shell tab bar to create breathing
+     room above Android's gesture handle. Keep their final content reachable
+     without moving the compact controls farther apart. */
+  .chef-gesture-clear {
+    padding-bottom: max(3rem, env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: max(3rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.dark .chef-privacy-summary {
+  background: color-mix(in srgb, var(--accent-rest) 8%, var(--surface-raised));
+}
+
+/* A control floating at the foot of a panel must clear the tab bar on phones,
+   so it is never parked behind the chrome at rest — at any text size. */
+.chef-above-tabbar {
+  bottom: calc(1.5rem + var(--size-tab-bar-readable) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .chef-above-tabbar {
+    bottom: 1.5rem;
+  }
+}
+
+/* --- Interaction feedback -------------------------------------------------
+   Feedback lands on pointer-down, not on release. */
+
+.chef-pressable {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform var(--duration-tap) var(--ease-settle),
+    background-color var(--duration-tap) var(--ease-settle),
+    border-color var(--duration-tap) var(--ease-settle);
+}
+
+.chef-pressable:active {
+  transform: scale(0.975);
+}
+
+/* PDF pinch zoom owns only the two-finger gesture. One-finger panning remains
+   native, and the shared hook keeps trackpad and touch zoom on the document
+   instead of scaling the entire application viewport. */
+.chef-pdf-zoom-viewport {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+}
+
+.chef-pressable-row:active {
+  transform: none;
+  background-color: var(--surface-sunken);
+}
+
+/* A native select is always a control, never layout, so it gets the touch floor
+   everywhere rather than tool by tool. */
+select {
+  min-height: var(--size-touch-target);
+}
+
+/* Every interactive element clears the touch floor whatever its visual box. */
+.chef-target {
+  min-height: var(--size-touch-target);
+  min-width: var(--size-touch-target);
+}
+
+/* Vertical-only version of the same idea, for controls that sit shoulder to
+   shoulder in a strip. Growing the width would let one segment steal a
+   neighbour's edge, so only the height is extended: a segment drawn at the 44px
+   phone touch height reaches the 48px floor using the shell's own padding above
+   and below it. A strip that wraps must therefore carry enough row gap for the
+   extended regions to stay apart. */
+.chef-hit-y {
+  position: relative;
+}
+
+.chef-hit-y::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 100%;
+  min-height: var(--size-touch-target);
+  transform: translateY(-50%);
+}
+
+/* For controls whose visual size is fixed by platform convention (the 51x31
+   switch) or by density. The hit area reaches the touch floor without the
+   pixels moving. The extension is absolutely positioned, so the class carries
+   its own containing block rather than relying on every caller to remember one. */
+.chef-hit {
+  position: relative;
+}
+
+.chef-hit::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  min-width: var(--size-touch-target);
+  min-height: var(--size-touch-target);
+}
+
+/* WebKit draws its own clear affordance inside type="search". The product ships
+   one labelled clear control, so the duplicate native glyph is removed. */
+input[type='search']::-webkit-search-cancel-button,
+input[type='search']::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/* A horizontally scrollable strip says so at its edges instead of ending in a
+   hard cut. Only the trailing edge fades while there is more to reach. */
+/* A bounded scroll panel fades at its foot so the boundary reads as more
+   content below, never as a clipped control. Vertical twin of the strip fade. */
+.chef-edge-fade-y {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1rem), transparent 100%);
+}
+
+@media (min-width: 1024px), (prefers-reduced-transparency: reduce) {
+  .chef-edge-fade-y {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .chef-edge-fade-x {
+    -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .chef-edge-fade-x {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+/* --- Primitives ----------------------------------------------------------- */
+
+.chef-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-panel);
+}
+
+/* A field is a control, so its edge is the one that clears 3:1 rather than the
+   one that only separates. The old hairline edge on a canvas fill left the box
+   readable but not *findable*: on a bright phone panel the field and the page
+   behind it were the same surface with text in it. */
+.chef-field {
+  width: 100%;
+  min-height: var(--size-touch-target);
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-field);
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--type-body-size);
+  transition: border-color var(--duration-tap) var(--ease-settle),
+    box-shadow var(--duration-tap) var(--ease-settle);
+}
+
+.chef-field::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Focus doubles the edge rather than only recolouring it, so which field has
+   the caret survives a colour-vision difference and a sunlit screen. The ring
+   is inset, so nothing about the control's box changes when it gains focus. */
+.chef-field:focus {
+  border-color: var(--accent-rest);
+  box-shadow: inset 0 0 0 1px var(--accent-rest);
+  outline: none;
+}
+
+.chef-field:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Placeholder text is content until it is replaced, so it takes the tertiary
+   token rather than the engine's default fade of the input colour, which lands
+   near 3:1 on light paper. `opacity: 1` because Firefox fades it again. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+/* Native checkbox and radio are drawn by the platform from `accent-color`; left
+   unset they arrive in the system blue, which is neither the product's accent
+   nor guaranteed to hold 3:1 against the warm neutral ground. */
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--accent-rest);
+}
+
+/* A native select is a control and gets a control's edge, whether or not the
+   tool that wrote it remembered `.chef-field`. */
+select {
+  border-color: var(--border-strong);
+}
+
+/* Labels wrap at spaces only. Never hyphenate a control's words: "comparison"
+   must not become "compari-son". */
+.chef-wrap-words {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+
+/* Long filenames: wrap at any character rather than pushing a row wide, and
+   keep the extension readable by never truncating mid-glyph. */
+.chef-filename {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.chef-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Two lines is a density decision, not a content decision. Once the reader has
+   asked for larger text, hiding the rest of a sentence stops being tidy and
+   starts being a loss, so the clamp is released and the row grows instead. */
+html[data-text-scale='large'] .chef-clamp-2,
+html[data-text-scale='larger'] .chef-clamp-2 {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+/* Divided list, Android's rhythm: the hairline starts after the icon region so
+   the icons read as one column and the divider separates the text, not the
+   whole row. 14px padding + 48px bubble + 14px gap on phones; the denser
+   desktop row is 12 + 40 + 12. */
+.chef-divided-list > li + li::before {
+  content: '';
+  display: block;
+  height: 1px;
+  margin-inline-start: 76px;
+  background: var(--border-hairline);
+}
+
+@media (min-width: 768px) {
+  .chef-divided-list > li + li::before {
+    margin-inline-start: 64px;
+  }
+}
+
+/* Desktop adaptation, not a different design: the same divided rows in the same
+   order, laid into two columns once the panel is wide enough that a single
+   column would be mostly empty space between the subtitle and the chevron. The
+   second column's first row starts the column, so it takes no divider, and a
+   single hairline separates the two columns. */
+@media (min-width: 1200px) {
+  .chef-divided-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chef-divided-list > li:nth-child(2)::before {
+    display: none;
+  }
+
+  .chef-divided-list > li:nth-child(even) {
+    border-inline-start: 1px solid var(--border-hairline);
+  }
+}
+
+/* --- Scroll containers ---------------------------------------------------- */
+
+.chef-scroller {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.9) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -79,43 +657,106 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 2px solid transparent;
   background-clip: padding-box;
-  background-color: rgba(148, 163, 184, 0.88);
+  background-color: var(--border-strong);
 }
 
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(71, 85, 105, 0.94);
+.chef-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.chef-no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* --- Motion ---------------------------------------------------------------
+   Two entrance transitions only, both critically damped. Motion states what
+   changed; nothing here loops, drifts, or decorates. */
+
+.chef-enter {
+  animation: chef-enter var(--duration-transition) var(--ease-enter) both;
+}
+
+.chef-enter-sheet {
+  animation: chef-enter-sheet var(--duration-sheet) var(--ease-enter) both;
+}
+
+@keyframes chef-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes chef-enter-sheet {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Indeterminate progress: a track that fills and resets. Text always states the
+   same thing, so losing the animation loses nothing. */
+.chef-progress-indeterminate {
+  animation: chef-progress 1.4s var(--ease-settle) infinite;
+}
+
+@keyframes chef-progress {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(100%, 0, 0);
+  }
 }
 
 .chef-slider {
   --chef-slider-pct: 50%;
-  --chef-slider-track: #cbd5e1;
-  --chef-slider-fill: #2563eb;
-  --chef-slider-thumb-bg: #ffffff;
-  --chef-slider-thumb-ring: #2563eb;
+  --chef-slider-track: var(--border-strong);
+  --chef-slider-fill: var(--accent-rest);
+  --chef-slider-thumb-bg: var(--surface-raised);
+  --chef-slider-thumb-ring: var(--accent-rest);
   position: relative;
   width: 100%;
-  height: 32px;
+  height: 44px;
   padding: 0;
   border: 0;
   background: transparent;
   user-select: none;
   -webkit-user-select: none;
   cursor: pointer;
-  touch-action: none;
+  touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
 }
 
+.chef-slider.is-compact {
+  height: 32px;
+}
+
+.chef-slider-value input::-webkit-outer-spin-button,
+.chef-slider-value input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 .chef-slider:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.35);
-  outline-offset: 4px;
-  border-radius: 9999px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
 }
 
 .chef-slider.is-disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -126,7 +767,7 @@ body {
   top: 50%;
   height: 4px;
   transform: translateY(-50%);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
 }
 
 .chef-slider__track {
@@ -143,60 +784,139 @@ body {
   position: absolute;
   left: var(--chef-slider-pct);
   top: 50%;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   transform: translate(-50%, -50%);
-  border: 3px solid var(--chef-slider-thumb-ring);
-  border-radius: 9999px;
+  border: 2px solid var(--chef-slider-thumb-ring);
+  border-radius: var(--radius-pill);
   background: var(--chef-slider-thumb-bg);
-  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.16);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: var(--elevation-raised);
+  transition: transform var(--duration-tap) var(--ease-settle);
 }
 
 .chef-slider:not(.is-disabled):hover .chef-slider__thumb,
 .chef-slider:not(.is-disabled):focus-visible .chef-slider__thumb,
 .chef-slider.is-dragging:not(.is-disabled) .chef-slider__thumb {
-  transform: translate(-50%, -50%) scale(1.04);
-  box-shadow: 0 5px 16px rgba(37, 99, 235, 0.22);
+  transform: translate(-50%, -50%) scale(1.06);
 }
 
-.dark .chef-slider {
-  --chef-slider-track: rgba(148, 163, 184, 0.34);
-  --chef-slider-fill: #60a5fa;
-  --chef-slider-thumb-bg: #f8fafc;
-  --chef-slider-thumb-ring: #60a5fa;
-}
+/* --- Compact tool surface -------------------------------------------------
+   One shell for all 34 tool routes rather than 34 sets of edits. `AppShell`
+   marks every non-root route with `.chef-tool-surface`, and the density rules
+   below are the phone's alone: past `md` the desktop layouts keep the larger
+   heading and the roomier page they were designed with, which is why this whole
+   block sits inside a max-width query.
 
-html:focus-within {
-  scroll-behavior: smooth;
-}
+   Only structural, unambiguous properties are set here — the page's leading
+   edge, the title step, and the gap under the title. A rule that reached for
+   arbitrary utility classes would be guessing at intent; these three are the
+   phone rhythm every tool shares. */
 
-@keyframes chef-float {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
+@media (max-width: 767px) {
+  /* The Android app's 16dp screen padding, applied once. Only the leading edge
+     is set: a tool that reserves room at its foot for a floating action keeps
+     that reservation. */
+  .chef-tool-surface > .chef-enter > * {
+    padding-top: var(--space-4);
   }
-  100% {
-    transform: translate3d(0, -1.5%, 0) scale(1.04);
+
+  /* The nav bar already names the tool, so the in-page title is the Heading
+     step (24/30), not Display. `margin-top` goes with it: a title directly
+     under a navigation bar has nothing to be pushed away from. */
+  .chef-tool-surface h1 {
+    font-size: var(--type-title2-size);
+    line-height: var(--type-title2-leading);
+    letter-spacing: var(--type-title2-tracking);
+    margin-top: 0;
+  }
+
+  /* The block that holds the title and its one-line intro. Tools wrote this gap
+     as anything from 24px to 32px; on a phone it is 16px everywhere, which is
+     the difference between one and two useful rows above the fold.
+
+     The path is deliberately exact — the tool root's own first-level child that
+     directly owns the h1. A bare `div:has(> h1)` would also match a text column
+     nested inside a header row and add a margin *inside* the block it was meant
+     to close up. Where `:has()` is unavailable the rule simply does not apply
+     and the tool keeps the gap it wrote. */
+  .chef-tool-surface > .chef-enter > * > div:has(> h1) {
+    margin-bottom: var(--space-4);
+  }
+}
+
+/* --- Accessibility preferences ------------------------------------------- */
+
+@media (prefers-contrast: more) {
+  :root {
+    --border-hairline: var(--paper-500);
+    --border-strong: var(--paper-700);
+    --text-body: var(--paper-900);
+    --text-secondary: var(--paper-800);
+    --text-tertiary: var(--paper-800);
+    --accent-text: var(--ink-800);
+  }
+
+  .dark {
+    --border-hairline: var(--paper-500);
+    --border-strong: var(--paper-300);
+    --text-body: var(--paper-25);
+    --text-secondary: var(--paper-100);
+    --text-tertiary: var(--paper-200);
+    --accent-text: var(--ink-200);
+  }
+
+  .chef-chrome {
+    background: var(--surface-raised);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html:focus-within {
-    scroll-behavior: auto;
-  }
-
+  /* Reduced motion is not no feedback: transforms and travel go, opacity and
+     colour stay so state changes are still legible. */
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .chef-pressable:active {
+    transform: none;
+  }
+
+  .chef-slider__thumb,
+  .chef-slider:not(.is-disabled):hover .chef-slider__thumb,
+  .chef-slider:not(.is-disabled):focus-visible .chef-slider__thumb,
+  .chef-slider.is-dragging:not(.is-disabled) .chef-slider__thumb {
+    transform: translate(-50%, -50%);
+    transition: none;
+  }
+
+  .chef-pressable:active {
+    background-color: var(--surface-sunken);
+  }
+
+  .chef-enter,
+  .chef-enter-sheet {
+    animation: chef-fade var(--duration-tap) linear both;
+  }
+
+  @keyframes chef-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 }
 
-@media (max-width: 640px) {
-  html {
-    font-size: 14px;
+@media print {
+  .chef-chrome,
+  nav[aria-label='Primary'] {
+    display: none;
   }
 }

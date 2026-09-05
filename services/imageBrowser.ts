@@ -6,57 +6,77 @@ export interface PreparedPdfImageAsset {
   aspectRatio: number;
 }
 
-const loadImageDimensions = async (blob: Blob): Promise<{ width: number; height: number }> => {
-  if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
-    const bitmap = await createImageBitmap(blob);
-    const dimensions = { width: bitmap.width, height: bitmap.height };
-    bitmap.close();
-    return dimensions;
-  }
-
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
+const loadImageElement = (file: File): Promise<{ image: HTMLImageElement; url: string }> =>
+  new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
     const image = new Image();
-    image.onload = () => {
-      const dimensions = { width: image.width, height: image.height };
+    image.onload = () => resolve({ image, url });
+    image.onerror = () => {
       URL.revokeObjectURL(url);
-      resolve(dimensions);
-    };
-    image.onerror = (error) => {
-      URL.revokeObjectURL(url);
-      reject(error);
+      reject(new Error('Image could not be decoded'));
     };
     image.src = url;
   });
-};
 
-const toPngFile = async (file: File): Promise<File> => {
-  const bitmap = await createImageBitmap(file);
+const normalizeImageAsset = async (file: File, rotation = 0) => {
+  const { image, url } = await loadImageElement(file);
+  const sourceWidth = image.naturalWidth;
+  const sourceHeight = image.naturalHeight;
   const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+  const normalizedRotation = ((rotation % 360) + 360) % 360;
+  const swapsAxes = normalizedRotation === 90 || normalizedRotation === 270;
+  canvas.width = swapsAxes ? sourceHeight : sourceWidth;
+  canvas.height = swapsAxes ? sourceWidth : sourceHeight;
 
   const context = canvas.getContext('2d');
   if (!context) {
-    bitmap.close();
+    URL.revokeObjectURL(url);
     throw new Error('Canvas context unavailable');
   }
 
-  context.drawImage(bitmap, 0, 0);
-  bitmap.close();
+  try {
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.rotate(normalizedRotation * Math.PI / 180);
+    context.drawImage(image, -sourceWidth / 2, -sourceHeight / 2);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 
-  const blob = await canvasToBlob(canvas, 'image/png');
-  return new File([blob], `${file.name.replace(/\.[^/.]+$/, '')}.png`, { type: 'image/png' });
+  const outputType = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+  const width = canvas.width;
+  const height = canvas.height;
+  const blob = await canvasToBlob(canvas, outputType, outputType === 'image/jpeg' ? 0.94 : undefined);
+  canvas.width = 0;
+  canvas.height = 0;
+  const extension = outputType === 'image/jpeg' ? 'jpg' : 'png';
+  return {
+    file: new File([blob], `${file.name.replace(/\.[^/.]+$/, '')}.${extension}`, { type: outputType }),
+    width,
+    height,
+  };
 };
 
+export const normalizeImageFile = async (file: File, rotation = 0): Promise<File> =>
+  (await normalizeImageAsset(file, rotation)).file;
+
 export const preparePdfImageAsset = async (file: File): Promise<PreparedPdfImageAsset> => {
-  const preparedFile = ['image/jpeg', 'image/png'].includes(file.type) ? file : await toPngFile(file);
-  const { width, height } = await loadImageDimensions(preparedFile);
+  // Drawing through the browser image decoder normalizes EXIF orientation before pdf-lib sees the pixels.
+  // Raw JPEG embedding otherwise displays some phone photos sideways in the exported PDF.
+  const normalized = await normalizeImageAsset(file);
 
   return {
-    file: preparedFile,
-    previewUrl: URL.createObjectURL(preparedFile),
-    aspectRatio: width / height,
+    file: normalized.file,
+    previewUrl: URL.createObjectURL(normalized.file),
+    aspectRatio: normalized.width / normalized.height,
+  };
+};
+
+export const rotatePreparedPdfImageAsset = async (file: File, rotation = 90): Promise<PreparedPdfImageAsset> => {
+  const normalized = await normalizeImageAsset(file, rotation);
+  return {
+    file: normalized.file,
+    previewUrl: URL.createObjectURL(normalized.file),
+    aspectRatio: normalized.width / normalized.height,
   };
 };
 

@@ -6,6 +6,16 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
+    <loc>https://pdfchef.dhananjaytech.app/privacy</loc>
+    <priority>0.6</priority>
+    <changefreq>yearly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/terms</loc>
+    <priority>0.6</priority>
+    <changefreq>yearly</changefreq>
+  </url>
+  <url>
     <loc>https://pdfchef.dhananjaytech.app/view</loc>
     <priority>0.8</priority>
     <changefreq>monthly</changefreq>
@@ -33,6 +43,26 @@
   <url>
     <loc>https://pdfchef.dhananjaytech.app/pdf-to-jpg</loc>
     <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/pdf-to-word</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/word-to-pdf</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/powerpoint-to-pdf</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/make-fillable</loc>
+    <priority>0.5</priority>
     <changefreq>monthly</changefreq>
   </url>
   <url>
@@ -151,12 +181,22 @@
     <changefreq>monthly</changefreq>
   </url>
   <url>
+    <loc>https://pdfchef.dhananjaytech.app/batch</loc>
+    <priority>0.7</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
     <loc>https://pdfchef.dhananjaytech.app/privacy-policy</loc>
     <priority>0.5</priority>
     <changefreq>yearly</changefreq>
   </url>
   <url>
     <loc>https://pdfchef.dhananjaytech.app/pdf-chef-privacy</loc>
+    <priority>0.5</priority>
+    <changefreq>yearly</changefreq>
+  </url>
+  <url>
+    <loc>https://pdfchef.dhananjaytech.app/terms-and-conditions</loc>
     <priority>0.5</priority>
     <changefreq>yearly</changefreq>
   </url>

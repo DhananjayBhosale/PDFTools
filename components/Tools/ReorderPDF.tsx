@@ -3,14 +3,17 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FileUpload } from '../UI/FileUpload';
 import { PDFFile, ProcessingStatus } from '../../types';
 import { getPdfPagePreviews } from '../../services/pdfBrowser';
-import { extractPages } from '../../services/pdfDocument';
-import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
-import { Loader2, Save, Undo2, Redo2, History, GripVertical, Eye } from 'lucide-react';
+import { reorderPDFPages } from '../../services/pdfDocument';
+import { downloadBlob, isPdfFile, revokeObjectUrls } from '../../services/pdfShared';
+import { ChevronDown, ChevronUp, Loader2, Save, Undo2, Redo2, History, GripVertical, Eye, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
-import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { PDFPreviewModal } from '../UI/PDFPreviewModal';
+import { androidExportFileName } from '../../services/androidParity';
+import { StatusToast } from '../UI/StatusToast';
+import { Button } from '../UI/Primitives';
+import { ToolChoiceRow, ToolHeader, ToolPanel, ToolSelectionBar, ToolShell } from '../UI/ToolLayout';
 
 interface PageItem {
   id: string;
@@ -35,6 +38,7 @@ export const ReorderPDF: React.FC = () => {
   const [history, setHistory] = useState<PageItem[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [status, setStatus] = useState<ProcessingStatus>({ isProcessing: false, progress: 0, message: '' });
 
   // Drag State
@@ -62,6 +66,7 @@ export const ReorderPDF: React.FC = () => {
 
     if (file) {
       setLoadingPreviews(true);
+      setPreviewError(null);
       getPdfPagePreviews(file.file)
         .then(urls => {
           if (cancelled) {
@@ -84,6 +89,7 @@ export const ReorderPDF: React.FC = () => {
         .catch((error) => {
           if (cancelled) return;
           console.error(error);
+          setPreviewError(error instanceof Error ? error.message : 'Unable to load page previews.');
           setLoadingPreviews(false);
         });
     } else {
@@ -91,6 +97,7 @@ export const ReorderPDF: React.FC = () => {
       setPreviewUrls([]);
       setHistory([]);
       setHistoryIndex(-1);
+      setPreviewError(null);
     }
 
     return () => {
@@ -107,13 +114,13 @@ export const ReorderPDF: React.FC = () => {
   const handleFilesSelected = (files: File[]) => {
     if (files.length === 0) return;
     const f = files[0];
-    if (f.type !== 'application/pdf') return;
+    if (!isPdfFile(f)) return;
     setFile({ id: uuidv4(), file: f, name: f.name, size: f.size });
   };
 
   // --- HISTORY MANAGEMENT ---
 
-  const commitToHistory = (newItems: PageItem[]) => {
+  const commitToHistory = useCallback((newItems: PageItem[]) => {
     const current = history[historyIndex];
     // Simple deep check to avoid duplicate states
     if (current && JSON.stringify(newItems.map(p => p.id)) === JSON.stringify(current.map(p => p.id))) return;
@@ -123,7 +130,7 @@ export const ReorderPDF: React.FC = () => {
     if (newHistory.length > 50) newHistory.shift();
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
-  };
+  }, [history, historyIndex]);
 
   const handleUndo = () => {
     if (historyIndex > 0) {
@@ -139,6 +146,22 @@ export const ReorderPDF: React.FC = () => {
       setItems(history[nextIndex]);
       setHistoryIndex(nextIndex);
     }
+  };
+
+  const moveItem = (fromIndex: number, toIndex: number) => {
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length || fromIndex === toIndex) return;
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setItems(next);
+    commitToHistory(next);
+  };
+
+  const resetOrder = () => {
+    const next = [...items].sort((left, right) => left.originalIndex - right.originalIndex);
+    if (next.every((item, index) => item.id === items[index]?.id)) return;
+    setItems(next);
+    commitToHistory(next);
   };
 
   // --- DRAG & DROP LOGIC (ISOLATED) ---
@@ -278,7 +301,7 @@ export const ReorderPDF: React.FC = () => {
       commitToHistory(current);
       return current;
     });
-  }, []);
+  }, [commitToHistory, handleGlobalMove]);
 
   useEffect(() => {
     return () => {
@@ -299,111 +322,154 @@ export const ReorderPDF: React.FC = () => {
     setStatus({ isProcessing: true, progress: 10, message: 'Reordering pages...' });
     try {
       const newOrderIndices = items.map(p => p.originalIndex);
-      const pdfBytes = await extractPages(file.file, newOrderIndices);
-      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `reordered-${file.name}`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      const pdfBytes = await reorderPDFPages(file.file, newOrderIndices);
+      downloadBlob(
+        new Blob([pdfBytes], { type: 'application/pdf' }),
+        androidExportFileName('reorder_pages', file.name, 'pdf'),
+      );
+      setStatus({ isProcessing: false, progress: 100, message: 'Reordered PDF ready.' });
     } catch (error) {
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Save failed' });
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: '',
+        error: error instanceof Error ? error.message : 'Unable to export the reordered PDF.',
+      });
     }
   };
 
   const activeItem = items.find(i => i.id === activeId);
+  const hasOrderChanges = items.some((item, index) => item.originalIndex !== index);
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-4 select-none">
-      <div className="mb-8">
-         <Link to="/" className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">← Back to Dashboard</Link>
-         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mt-2">Reorder PDF Pages</h1>
-         <p className="text-slate-500 dark:text-slate-400">Drag pages to rearrange. Vertical list ensures precision.</p>
-      </div>
+    <ToolShell width="list" centered={!file} className="select-none">
+      <ToolHeader title="Reorder Pages" />
 
       <AnimatePresence mode="wait">
         {!file ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-xl mx-auto">
-             <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Drop PDF to reorder" />
+             <FileUpload onFilesSelected={handleFilesSelected} accept=".pdf" label="Choose a PDF to reorder" />
           </motion.div>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6">
-            
-            {/* Toolbar */}
-            <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between sticky top-4 z-40 shadow-lg border border-slate-200 dark:border-slate-800 ring-1 ring-black/5">
-               <div className="flex items-center gap-4 min-w-0">
-                 <button onClick={() => setFile(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500" title="Change File"><History size={20}/></button>
-                 <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
-                 <div className="flex items-center gap-2">
-                   <button onClick={handleUndo} disabled={historyIndex <= 0} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><Undo2 size={20}/></button>
-                   <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><Redo2 size={20}/></button>
-                 </div>
-                 <h3 className="font-bold text-slate-900 dark:text-white truncate hidden md:block max-w-[200px] ml-2">{file.name}</h3>
-               </div>
-               <button onClick={handleSave} disabled={status.isProcessing} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-md shadow-blue-500/20">
-                 {status.isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} <span className="hidden sm:inline">Save</span>
-               </button>
-            </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-3">
+            <ToolPanel className="flex flex-col gap-2.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <button
+                  onClick={() => setFile(null)}
+                  className="chef-pressable chef-target -ml-1 flex shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)]"
+                  aria-label="Choose another PDF"
+                >
+                  <History aria-hidden size={18} />
+                </button>
+                <h2 className="chef-filename min-w-0 flex-1 text-sm font-semibold text-[var(--text-primary)]">{file.name}</h2>
+              </div>
+
+              <ToolChoiceRow
+                label="Order history"
+                choices={[
+                  { key: 'undo', label: 'Undo', ariaLabel: 'Undo page reorder', icon: <Undo2 aria-hidden size={18} className="shrink-0" />, onClick: handleUndo, disabled: historyIndex <= 0 },
+                  { key: 'redo', label: 'Redo', ariaLabel: 'Redo page reorder', icon: <Redo2 aria-hidden size={18} className="shrink-0" />, onClick: handleRedo, disabled: historyIndex >= history.length - 1 },
+                  { key: 'reset', label: 'Reset', ariaLabel: 'Reset to the original page order', icon: <RotateCcw aria-hidden size={18} className="shrink-0" />, onClick: resetOrder, disabled: !hasOrderChanges },
+                ]}
+              />
+
+              <ToolSelectionBar
+                summary={`${items.length} page${items.length === 1 ? '' : 's'} · ${hasOrderChanges ? 'order changed' : 'original order'}`}
+                actions={[]}
+              />
+            </ToolPanel>
+
+            <Button
+              tone="primary"
+              block
+              busy={status.isProcessing}
+              disabled={loadingPreviews || items.length === 0}
+              icon={<Save aria-hidden size={18} />}
+              onClick={() => void handleSave()}
+            >
+              Export reordered PDF
+            </Button>
 
             {/* List Container - Vertical Stack */}
-            <div 
+            <div
               ref={containerRef}
-              className="flex flex-col gap-3 min-h-[500px] relative pb-24"
+              className="relative flex flex-col gap-2"
+              role="list"
             >
                {loadingPreviews ? (
-                 <div className="flex flex-col items-center justify-center h-64 text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800">
-                   <Loader2 className="animate-spin mb-4" size={32} />
-                   <p>Generating page previews...</p>
+                 <div className="flex flex-col items-center justify-center gap-2 py-6 text-[var(--text-tertiary)]">
+                   <Loader2 aria-hidden className="animate-spin" size={24} />
+                   <p className="text-sm">Generating page previews...</p>
+                 </div>
+               ) : previewError ? (
+                 <div className="flex flex-col items-center gap-2 rounded-[var(--radius-panel)] border border-[var(--border-hairline)] px-4 py-4 text-center">
+                   <p className="font-semibold text-[var(--status-danger-text)]">Unable to load page previews.</p>
+                   <p className="max-w-measure text-sm text-[var(--text-secondary)]">{previewError}</p>
+                   <Button tone="secondary" onClick={() => setFile(null)}>Choose another PDF</Button>
                  </div>
                ) : (
                  items.map((item, i) => (
                   <div
                      key={item.id}
                      data-pageid={item.id}
+                     role="listitem"
                      className={`
-                       relative flex items-center gap-4 p-3 bg-white dark:bg-slate-900 border rounded-xl shadow-sm transition-colors group
-                       ${activeId === item.id ? 'opacity-0' : 'opacity-100 border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'}
+                       relative flex items-center gap-1.5 rounded-[var(--radius-row)] border bg-[var(--surface-raised)] p-1.5 transition-colors
+                       ${activeId === item.id ? 'opacity-0 border-[var(--border-hairline)]' : 'opacity-100 border-[var(--border-hairline)] hover:border-[var(--border-strong)]'}
                      `}
                      style={{ touchAction: 'pan-y' }}
                    >
                       <button
                         type="button"
                         onPointerDown={(e) => handlePointerDown(e, item.id)}
-                        className="flex items-center justify-center rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600 active:cursor-grabbing dark:hover:bg-slate-800"
+                        className="chef-target flex shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-sunken)] active:cursor-grabbing"
                         style={{ touchAction: 'none' }}
                         aria-label={`Drag page ${item.originalIndex + 1}`}
                       >
-                        <GripVertical size={20} />
+                        <GripVertical aria-hidden size={18} />
                       </button>
-                      
-                      <div className="w-16 h-20 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0 relative">
-                        <img src={item.url} alt="" className="w-full h-full object-contain" />
-                        
-                        {/* Thumbnail overlay for click-to-preview */}
-                        <div 
-                          className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center cursor-pointer"
-                          onPointerDown={(e) => e.stopPropagation()} // Stop drag
-                          onClick={() => setPreviewTarget({ index: item.originalIndex, label: `Page ${item.originalIndex + 1}` })}
-                        />
-                      </div>
-                      
-                      <div className="flex-1">
-                        <div className="font-bold text-slate-700 dark:text-slate-200">Page {item.originalIndex + 1}</div>
-                        <div className="text-xs text-slate-400">Position {i + 1}</div>
-                      </div>
 
-                      {/* Preview Button */}
+                      {/* The thumbnail is the preview control. It carries the eye
+                          glyph the separate button used to, which frees the width
+                          the two move buttons need to be visible at 320px. */}
                       <button
+                        type="button"
                         onPointerDown={(e) => e.stopPropagation()} // CRITICAL: Prevent Drag
                         onClick={() => setPreviewTarget({ index: item.originalIndex, label: `Page ${item.originalIndex + 1}` })}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                        title="Preview Page"
+                        aria-label={`Preview page ${item.originalIndex + 1}`}
+                        className="relative h-14 w-11 shrink-0 overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)]"
                       >
-                        <Eye size={20} />
+                        <img src={item.url} alt="" className="h-full w-full object-contain" />
+                        <span aria-hidden className="absolute bottom-0 right-0 grid h-5 w-5 place-items-center rounded-tl-[var(--radius-control)] bg-[var(--surface-raised)]/90 text-[var(--text-secondary)]">
+                          <Eye size={12} />
+                        </span>
+                      </button>
+
+                      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">
+                        Page {item.originalIndex + 1}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => moveItem(i, i - 1)}
+                        disabled={i === 0}
+                        className="chef-target flex shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] disabled:text-[var(--text-tertiary)] disabled:opacity-35"
+                        aria-label={`Move page ${item.originalIndex + 1} up`}
+                      >
+                        <ChevronUp aria-hidden size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveItem(i, i + 1)}
+                        disabled={i === items.length - 1}
+                        className="chef-target flex shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] disabled:text-[var(--text-tertiary)] disabled:opacity-35"
+                        aria-label={`Move page ${item.originalIndex + 1} down`}
+                      >
+                        <ChevronDown aria-hidden size={18} />
                       </button>
                    </div>
                  ))
                )}
-            </div>
-            
-            <div className="text-center text-xs text-slate-400 pb-8">
-              {historyIndex + 1} / {history.length} states • Drag to reorder
             </div>
           </motion.div>
         )}
@@ -419,14 +485,14 @@ export const ReorderPDF: React.FC = () => {
             width: dragOverlayRectRef.current.width,
           }}
         >
-          <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-xl shadow-2xl p-3 flex items-center gap-4 transform scale-[1.02] opacity-95">
-             <div className="text-blue-500"><GripVertical size={20} /></div>
-             <div className="w-16 h-20 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
+          <div className="flex transform items-center gap-2 rounded-[var(--radius-row)] border-2 border-[var(--accent-rest)] bg-[var(--surface-raised)] p-1.5 opacity-95 shadow-[var(--elevation-sheet)] scale-[1.02]">
+             <div className="text-[var(--accent-text)]"><GripVertical aria-hidden size={18} /></div>
+             <div className="h-14 w-11 shrink-0 overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-hairline)] bg-[var(--surface-sunken)]">
                 <img src={activeItem.url} alt="" className="w-full h-full object-contain" />
              </div>
-             <div>
-                <div className="font-bold text-slate-900 dark:text-white">Page {activeItem.originalIndex + 1}</div>
-                <div className="text-xs text-blue-500 font-bold">Moving...</div>
+             <div className="min-w-0">
+                <div className="text-sm font-semibold text-[var(--text-primary)]">Page {activeItem.originalIndex + 1}</div>
+                <div className="type-caption font-semibold text-[var(--accent-text)]">Moving...</div>
              </div>
           </div>
         </div>,
@@ -444,6 +510,7 @@ export const ReorderPDF: React.FC = () => {
           />
         )}
       </AnimatePresence>
-    </div>
+      <StatusToast status={status} />
+    </ToolShell>
   );
 };

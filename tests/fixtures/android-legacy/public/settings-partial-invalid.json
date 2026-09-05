@@ -1,0 +1,7 @@
+{
+  "health": "partial_invalid",
+  "invalidValueCount": 1,
+  "values": {
+    "theme_mode": "DARK"
+  }
+}

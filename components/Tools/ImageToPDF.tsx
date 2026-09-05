@@ -3,10 +3,9 @@ import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from
 import { FileUpload } from '../UI/FileUpload';
 import { ProcessingStatus } from '../../types';
 import { createPDFFromLayout, type PDFPageLayout } from '../../services/pdfDocument';
-import { getContainedImageSize, preparePdfImageAsset } from '../../services/imageBrowser';
+import { getContainedImageSize, preparePdfImageAsset, rotatePreparedPdfImageAsset } from '../../services/imageBrowser';
 import { downloadBlob, revokeObjectUrls } from '../../services/pdfShared';
-import { X, ArrowDown, Loader2, FileImage, Plus, Trash2, Move, Undo2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AlertTriangle, X, ArrowDown, Loader2, FileImage, Plus, Trash2, Move, RotateCw, Undo2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 import { ZoomControls } from '../UI/ZoomControls';
@@ -14,6 +13,39 @@ import { useZoom } from '../../hooks/useZoom';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { createPortal } from 'react-dom';
 import { SEOHead } from '../SEO/SEOHead';
+import { tools } from './toolCatalog';
+import { ToolIdentity } from './ToolIdentity';
+import { StatusToast } from '../UI/StatusToast';
+import { StatusLine } from '../UI/Primitives';
+import { ToolHeader, ToolShell } from '../UI/ToolLayout';
+import { useImmersiveWorkspace } from '../Layout/AppShell';
+
+const IMAGE_TO_PDF_TOOL = tools.find((tool) => tool.path === '/image-to-pdf');
+const MAX_IMAGE_TO_PDF_FILES = 100;
+const IMAGE_PREPARE_CONCURRENCY = 2;
+
+const mapWithConcurrency = async <Input, Output>(
+  items: Input[],
+  concurrency: number,
+  mapper: (item: Input, index: number) => Promise<Output>,
+): Promise<Output[]> => {
+  const results = new Array<Output>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
+
+const imagePdfOutputName = (filename: string) => {
+  const baseName = filename.replace(/\.[^/.]+$/, '').trim() || 'images';
+  return `${baseName}.pdf`;
+};
 
 // Data Model
 interface ImageElement {
@@ -60,10 +92,11 @@ const DraggableResizableImage: React.FC<{
    containerRef: React.RefObject<HTMLDivElement>,
    onUpdate: (u: Partial<ImageElement>) => void,
    onRemove: () => void,
+   onRotate: () => void,
    onDragStart: (e: React.PointerEvent, pageId: string, element: ImageElement, containerRef: React.RefObject<HTMLDivElement>) => void,
    zoom: number,
    isDraggingGlobally: boolean
-}> = ({ element, pageId, containerRef, onUpdate, onRemove, onDragStart, zoom, isDraggingGlobally }) => {
+}> = ({ element, pageId, containerRef, onUpdate, onRemove, onRotate, onDragStart, zoom, isDraggingGlobally }) => {
   const [resizingHandle, setResizingHandle] = useState<string | null>(null);
   const startRef = useRef({ x: 0, y: 0, ex: 0, ey: 0, w: 0, h: 0 });
 
@@ -147,14 +180,18 @@ const DraggableResizableImage: React.FC<{
            height: `${element.height * 100}%`,
            cursor: 'grab',
            opacity: isDraggingGlobally ? 0 : 1,
-           pointerEvents: isDraggingGlobally ? 'none' : 'auto'
+           pointerEvents: isDraggingGlobally ? 'none' : 'auto',
+           touchAction: 'none'
         }}
      >
-        <img src={element.previewUrl} className="w-full h-full object-contain pointer-events-none" />
+        <img src={element.previewUrl} alt="Image placed on PDF page" className="w-full h-full object-contain pointer-events-none" />
         
         {/* Controls */}
-        <div className="absolute -top-3 -right-3 hidden group-hover:flex z-20">
-           <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="bg-rose-500 text-white rounded-full p-1.5 shadow-lg hover:bg-rose-600 transition-colors">
+        <div className="absolute right-1 top-1 z-20 flex gap-1 sm:-right-3 sm:-top-3 sm:hidden sm:group-hover:flex">
+           <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRotate(); }} aria-label="Rotate image clockwise" className="grid min-h-11 min-w-11 place-items-center rounded-full bg-[var(--accent-rest)] text-[var(--text-on-accent)] shadow-[var(--elevation-panel)] transition-colors hover:bg-[var(--accent-hover)] sm:min-h-0 sm:min-w-0 sm:p-1.5">
+              <RotateCw size={14}/>
+           </button>
+           <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRemove(); }} aria-label="Remove image" className="grid min-h-11 min-w-11 place-items-center rounded-full bg-[var(--status-danger-text)] text-white shadow-[var(--elevation-panel)] transition-opacity hover:opacity-90 sm:min-h-0 sm:min-w-0 sm:p-1.5">
               <X size={14}/>
            </button>
         </div>
@@ -169,7 +206,7 @@ const DraggableResizableImage: React.FC<{
           <div 
              key={handle.pos}
              onPointerDown={(e) => handleResizeDown(e, handle.pos)}
-             className={`absolute w-3 h-3 bg-white border-2 border-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-sm ${
+             className={`absolute w-3 h-3 bg-white border-2 border-[var(--accent-rest)] rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-sm ${
                handle.pos === 'bottom-right' ? '-bottom-1.5 -right-1.5' : 
                handle.pos === 'bottom-left' ? '-bottom-1.5 -left-1.5' :
                handle.pos === 'top-right' ? '-top-1.5 -right-1.5' :
@@ -193,19 +230,20 @@ const CanvasPage: React.FC<{
   zoom: number,
   updateElement: (pageId: string, elementId: string, updates: Partial<ImageElement>) => void,
   removeElement: (pageId: string, elementId: string) => void,
+  rotateElement: (pageId: string, element: ImageElement) => void,
   onImageDragStart: (e: React.PointerEvent, pageId: string, element: ImageElement, containerRef: React.RefObject<HTMLDivElement>) => void,
   activeImageDragId: string | null
-}> = ({ page, index, zoom, updateElement, removeElement, onImageDragStart, activeImageDragId }) => {
+}> = ({ page, index, zoom, updateElement, removeElement, rotateElement, onImageDragStart, activeImageDragId }) => {
   const pageRef = useRef<HTMLDivElement>(null);
 
   return (
     <div 
-      className="bg-white shadow-lg relative overflow-hidden ring-1 ring-slate-200"
+      className="relative overflow-hidden bg-white shadow-[var(--elevation-panel)] ring-1 ring-paper-300"
       style={{ width: '100%', aspectRatio: '210/297' }} // A4 Ratio
       ref={pageRef}
       data-page-id={page.id}
     >
-      <div className="absolute top-2 left-2 text-[10px] font-mono text-slate-300 pointer-events-none select-none">Page {index + 1}</div>
+      <div className="type-footnote pointer-events-none absolute left-2 top-2 select-none font-mono text-paper-500">Page {index + 1}</div>
       {page.elements.map(el => (
          <DraggableResizableImage 
             key={el.id} 
@@ -214,6 +252,7 @@ const CanvasPage: React.FC<{
             containerRef={pageRef}
             onUpdate={(u) => updateElement(page.id, el.id, u)}
             onRemove={() => removeElement(page.id, el.id)}
+            onRotate={() => rotateElement(page.id, el)}
             onDragStart={onImageDragStart}
             zoom={zoom}
             isDraggingGlobally={activeImageDragId === el.id}
@@ -234,7 +273,8 @@ export const ImageToPDF: React.FC = () => {
   const { activeId, dragHandlers, registerItem, overlayStyle } = useDragReorder<PageData>({
     items: pages,
     onReorder: setPages,
-    keyExtractor: p => p.id
+    keyExtractor: p => p.id,
+    scrollContainerRef: canvasViewportRef,
   });
 
   // Free Drag State for Images
@@ -384,14 +424,31 @@ export const ImageToPDF: React.FC = () => {
   const handleFilesSelected = async (newFiles: File[]) => {
     const images = newFiles.filter(f => f.type.startsWith('image/'));
     if (images.length === 0) return;
+    const currentImageCount = pages.reduce((total, page) => total + page.elements.length, 0);
+    const availableSlots = Math.max(0, MAX_IMAGE_TO_PDF_FILES - currentImageCount);
+    const acceptedImages = images.slice(0, availableSlots);
+    if (acceptedImages.length === 0) {
+      setStatus({ isProcessing: false, progress: 0, message: '', error: `Image to PDF supports up to ${MAX_IMAGE_TO_PDF_FILES} images at a time.` });
+      return;
+    }
     
     // Create a new page for each image by default (standard flow)
-    const newPages = await Promise.all(images.map(async (file) => ({
-      id: uuidv4(),
-      elements: [await createImageElement(file, 0.8)],
-    })));
-    
-    setPages(prev => [...prev, ...newPages]);
+    try {
+      const newPages = await mapWithConcurrency(acceptedImages, IMAGE_PREPARE_CONCURRENCY, async (file) => ({
+        id: uuidv4(),
+        elements: [await createImageElement(file, 0.8)],
+      }));
+      setPages(prev => [...prev, ...newPages]);
+      setStatus({
+        isProcessing: false,
+        progress: 0,
+        message: acceptedImages.length < images.length
+          ? `Added ${acceptedImages.length} images. The ${MAX_IMAGE_TO_PDF_FILES}-image limit has been reached.`
+          : '',
+      });
+    } catch {
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'One or more selected images could not be opened.' });
+    }
   };
 
   const addEmptyPage = () => {
@@ -416,6 +473,28 @@ export const ImageToPDF: React.FC = () => {
     }));
   }, []);
 
+  const rotateElement = useCallback(async (pageId: string, element: ImageElement) => {
+    try {
+      const asset = await rotatePreparedPdfImageAsset(element.file, 90);
+      const maxFraction = Math.max(element.width, element.height);
+      const size = getContainedImageSize(asset.aspectRatio, maxFraction);
+      const centerX = element.x + element.width / 2;
+      const centerY = element.y + element.height / 2;
+      updateElement(pageId, element.id, {
+        file: asset.file,
+        previewUrl: asset.previewUrl,
+        aspectRatio: asset.aspectRatio,
+        width: size.width,
+        height: size.height,
+        x: Math.max(0, Math.min(1 - size.width, centerX - size.width / 2)),
+        y: Math.max(0, Math.min(1 - size.height, centerY - size.height / 2)),
+      });
+    } catch (error) {
+      console.error(error);
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Unable to rotate this image.' });
+    }
+  }, [updateElement]);
+
   const handleConvert = async () => {
     if (pages.length === 0) return;
     setStatus({ isProcessing: true, progress: 10, message: 'Building PDF...' });
@@ -433,13 +512,24 @@ export const ImageToPDF: React.FC = () => {
       }));
       
       const pdfBytes = await createPDFFromLayout(layout);
-      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `layout-${Date.now()}.pdf`);
-      setStatus({ isProcessing: false, progress: 100, message: 'Done!' });
+      setStatus({ isProcessing: true, progress: 90, message: 'Preparing PDF...' });
+      const firstImage = pages.flatMap((page) => page.elements)[0];
+      downloadBlob(
+        new Blob([pdfBytes], { type: 'application/pdf' }),
+        imagePdfOutputName(firstImage?.file.name || 'images'),
+        'application/pdf',
+      );
+      setStatus({ isProcessing: false, progress: 100, message: 'PDF is ready.' });
     } catch (e) {
       console.error(e);
-      setStatus({ isProcessing: false, progress: 0, message: '', error: 'Failed' });
+      setStatus({ isProcessing: false, progress: 0, message: '', error: 'The PDF could not be created from these images.' });
     }
   };
+
+  // The page builder earns the whole screen; a drop zone does not. Until the
+  // first image lands this is an ordinary tool screen, with the shell's Tools
+  // navigation above it and the tab bar below it.
+  useImmersiveWorkspace(pages.length > 0);
 
   const activePage = pages.find(p => p.id === activeId);
   const measuredCanvasWidth = canvasViewportWidth || (typeof window !== 'undefined' ? window.innerWidth : 794);
@@ -447,101 +537,116 @@ export const ImageToPDF: React.FC = () => {
   const basePageWidth = Math.min(794, usableCanvasWidth);
   const renderedPageWidth = basePageWidth * zoom;
 
+  if (pages.length === 0) {
+    return (
+      <ToolShell centered>
+        <SEOHead
+          title="JPG to PDF Converter - Create PDFs from Images | PDF Chef"
+          description="Convert JPG, PNG, and WebP images to PDF documents in your browser with a drag and drop layout builder."
+        />
+        <ToolHeader title="Image to PDF" />
+        <FileUpload onFilesSelected={handleFilesSelected} accept="image/*" multiple label="Choose images for your PDF" />
+        {status.error && (
+          <StatusLine tone="danger" icon={<AlertTriangle aria-hidden size={16} />}>
+            {status.error}
+          </StatusLine>
+        )}
+      </ToolShell>
+    );
+  }
+
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div className="chef-safe-bottom flex h-[100dvh] min-h-[100dvh] w-full flex-col overflow-hidden bg-[var(--surface-canvas)]">
        <SEOHead 
         title="JPG to PDF Converter - Create PDFs from Images | PDF Chef"
-        description="Convert JPG, PNG, and WebP images to PDF documents. Drag and drop layout builder. Free, local, and secure."
+        description="Convert JPG, PNG, and WebP images to PDF documents in your browser with a drag and drop layout builder."
        />
 
-       {/* Header */}
-       <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 sm:px-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between flex-shrink-0 z-30 shadow-sm">
+       {/* Header. An immersive route gets no shell chrome, so it consumes the
+           status-bar inset itself rather than painting under the clock. */}
+       <div className="chef-safe-top z-30 flex flex-shrink-0 flex-col gap-3 border-b border-[var(--border-hairline)] bg-[var(--surface-raised)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <Link to="/" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500">
+            <Link to="/" aria-label="Back to dashboard" className="chef-target grid place-items-center rounded-full text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-sunken)]">
                <Undo2 size={20} />
             </Link>
-            <div className="min-w-0">
-               <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-none break-words">Document Builder</h1>
-               <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider font-bold">JPG to PDF</p>
+            <div className="flex min-w-0 items-center gap-2">
+               {IMAGE_TO_PDF_TOOL && (
+                 <ToolIdentity tool={IMAGE_TO_PDF_TOOL} size={20} assetSize={30} assetClassName="h-[30px] w-[30px] shrink-0 object-contain" />
+               )}
+               <div className="min-w-0">
+                 <h1 className="break-words text-lg font-bold leading-none text-[var(--text-primary)]">Image to PDF</h1>
+                 {pages.length > 0 && (
+                   <p className="type-caption mt-1 text-[var(--text-tertiary)]">{pages.length} {pages.length === 1 ? 'page' : 'pages'}</p>
+                 )}
+               </div>
             </div>
          </div>
-         <div className="flex w-full sm:w-auto items-stretch sm:items-center gap-2 sm:gap-3">
-            <button onClick={() => setPages([])} className="flex-1 sm:flex-none text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-2 rounded-lg text-sm font-bold transition-colors">
-              Clear All
+         {pages.length > 0 && (
+         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
+            <button type="button" onClick={() => { setPages([]); setStatus({ isProcessing: false, progress: 0, message: '' }); }} className="chef-target chef-pressable flex-1 rounded-[var(--radius-control)] px-3 text-sm font-bold text-[var(--status-danger-text)] transition-colors hover:bg-[var(--status-danger-quiet)] sm:flex-none">
+              Clear all
             </button>
             <button 
                onClick={handleConvert} 
                disabled={status.isProcessing || pages.length === 0}
-               className="flex-1 sm:flex-none px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+               className="chef-target chef-pressable flex flex-1 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--accent-rest)] px-4 font-bold text-[var(--text-on-accent)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-55 sm:flex-none sm:px-6"
             >
                {status.isProcessing ? <Loader2 className="animate-spin" size={18}/> : <ArrowDown size={18}/>} 
                <span>Export PDF</span>
             </button>
          </div>
+         )}
       </div>
 
-      {pages.length === 0 ? (
-         <div className="flex-1 flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-xl">
-               <FileUpload onFilesSelected={handleFilesSelected} accept="image/*" multiple label="Drop images to start building your PDF" />
-            </motion.div>
-         </div>
-      ) : (
-         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
             {/* Sidebar Controls */}
-            <div className="w-full lg:w-72 flex flex-col bg-white dark:bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 max-h-[46vh] lg:max-h-none h-auto lg:h-full z-20 shadow-xl">
-               <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+            <div className="chef-scroller chef-edge-fade-y z-20 flex h-auto max-h-[min(60vh,max(46vh,20rem))] w-full flex-col overflow-y-auto border-b border-[var(--border-hairline)] bg-[var(--surface-raised)] lg:h-full lg:max-h-none lg:w-72 lg:border-b-0 lg:border-r">
+               <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3">
                   <section>
-                     <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Document Actions</h3>
-                     <div className="space-y-2">
-                        <button className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center gap-2 relative transition-colors">
-                           <FileImage size={16}/> Add New Pages
-                           <input type="file" multiple accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files && handleFilesSelected(Array.from(e.target.files))} />
-                        </button>
-                        <button onClick={addEmptyPage} className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center gap-2 transition-colors">
-                           <Plus size={16}/> New Blank Page
+                     <h3 className="type-caption mb-1.5 text-[var(--text-secondary)]">Document actions</h3>
+                     <div className="grid grid-cols-2 gap-2">
+                        <label className="chef-target chef-pressable flex w-full cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-strong)] text-sm font-bold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-rest)] focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--focus-ring)]">
+                           <FileImage aria-hidden size={18}/> Add pages
+                           <input type="file" multiple accept="image/*" aria-label="Add new pages from images" className="sr-only" onChange={e => e.target.files && handleFilesSelected(Array.from(e.target.files))} />
+                        </label>
+                        <button type="button" onClick={addEmptyPage} className="chef-target chef-pressable flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-strong)] text-sm font-bold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-rest)]">
+                           <Plus aria-hidden size={18}/> Blank page
                         </button>
                      </div>
                   </section>
 
                   <section>
-                     <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">View Controls</h3>
-                     <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} className="w-full justify-between" />
-                     </div>
+                     <h3 className="type-caption mb-1.5 text-[var(--text-secondary)]">View</h3>
+                     <ZoomControls zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
                   </section>
 
                   <section>
-                     <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Page List</h3>
+                     <h3 className="type-caption mb-1.5 text-[var(--text-secondary)]">Pages</h3>
                      <div className="space-y-2">
                         {pages.map((p, i) => (
                            <div 
                               key={p.id} 
-                              className={`p-2 rounded-lg border text-xs font-medium flex items-center justify-between transition-colors ${activeId === p.id ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}
+                              className={`p-2 rounded-lg border text-xs font-medium flex items-center justify-between transition-colors ${activeId === p.id ? 'border-[var(--accent-rest)] bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]' : 'border-[var(--border-hairline)] bg-[var(--surface-raised)] text-[var(--text-secondary)]'}`}
                            >
                               <span className="flex items-center gap-2">
                                  <Move size={12} className="opacity-40" />
                                  Page {i + 1}
                               </span>
-                              <button onClick={() => removePage(p.id)} className="text-rose-400 hover:text-rose-600 p-1"><Trash2 size={12}/></button>
+                              <button onClick={() => removePage(p.id)} aria-label={`Remove page ${i + 1}`} className="chef-target grid place-items-center text-[var(--status-danger-text)] hover:bg-[var(--status-danger-quiet)] rounded-[var(--radius-control)]"><Trash2 size={14}/></button>
                            </div>
                         ))}
                      </div>
                   </section>
-               </div>
-               
-               <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                  <p className="text-[10px] text-slate-400 text-center">Drag images on pages to rearrange. Use the handles to resize.</p>
                </div>
             </div>
 
             {/* Main Canvas Scroll Area */}
             <div
                ref={canvasViewportRef}
-               className="flex-1 bg-slate-200/50 dark:bg-slate-950/50 overflow-auto custom-scrollbar relative p-3 sm:p-6 lg:p-12"
+               className="chef-gesture-clear custom-scrollbar relative flex-1 overflow-auto bg-[var(--surface-sunken)] p-3 sm:p-6 lg:p-10"
             >
                <div 
-                  className="flex flex-col items-center gap-16 pb-64 transition-all duration-200 mx-auto" 
+                  className="mx-auto flex flex-col items-center gap-4 transition-all duration-200" 
                   style={{ 
                     width: renderedPageWidth,
                     minHeight: '100%'
@@ -551,40 +656,43 @@ export const ImageToPDF: React.FC = () => {
                      <div 
                         key={page.id}
                         ref={(el) => registerItem(page.id, el)}
-                        className={`relative group shadow-2xl transition-shadow hover:shadow-blue-500/10 ${activeId === page.id ? 'opacity-0' : 'opacity-100'}`}
+                        className={`group relative ${activeId === page.id ? 'opacity-0' : 'opacity-100'}`}
                         style={{ width: renderedPageWidth }}
                      >
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
                            <div className="flex flex-wrap items-center gap-2">
                               <div 
-                                 className="flex items-center gap-2 cursor-grab active:cursor-grabbing text-slate-400 hover:text-blue-500 bg-white dark:bg-slate-900 px-3 py-1 rounded-full shadow-sm border border-slate-200 dark:border-slate-800 text-xs font-bold"
+                                 className="flex cursor-grab items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--surface-raised)] px-3 py-1 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--accent-text)] active:cursor-grabbing"
                                  onPointerDown={(e) => dragHandlers.onPointerDown(e, page.id)}
                                  style={{ touchAction: 'none' }}
                               >
-                                 <Move size={14} /> Page {i + 1}
+                                 <Move aria-hidden size={14} /> Page {i + 1}
                               </div>
-                              <button 
-                                 className="relative flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-1 rounded-full shadow-sm border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 hover:text-blue-500 transition-colors"
+                              <label
+                                 className="chef-target flex cursor-pointer items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--surface-raised)] px-3 text-xs font-bold text-[var(--text-secondary)] transition-colors hover:text-[var(--accent-text)] focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--focus-ring)]"
                               >
-                                 <Plus size={14} /> Add Image to Page
+                                 <Plus aria-hidden size={14} /> Add image
                                  <input 
                                     type="file" 
                                     multiple 
                                     accept="image/*" 
-                                    className="absolute inset-0 opacity-0 cursor-pointer" 
+                                    aria-label="Add an image to this page"
+                                    className="sr-only" 
                                     onChange={async e => {
                                        if (e.target.files) {
                                          const files = Array.from(e.target.files) as File[];
-                                          const newElements = await Promise.all(
-                                            files.map((file) => createImageElement(file, 0.4, { x: 0.1, y: 0.1 })),
+                                          const newElements = await mapWithConcurrency(
+                                            files,
+                                            IMAGE_PREPARE_CONCURRENCY,
+                                            (file) => createImageElement(file, 0.4, { x: 0.1, y: 0.1 }),
                                           );
                                           setPages(prev => prev.map(p => p.id === page.id ? { ...p, elements: [...p.elements, ...newElements] } : p));
                                        }
                                     }} 
                                  />
-                              </button>
+                              </label>
                            </div>
-                           <button onClick={() => removePage(page.id)} className="p-2 bg-white dark:bg-slate-900 rounded-full shadow-sm border border-slate-200 dark:border-slate-800 text-rose-500 hover:bg-rose-50 transition-colors">
+                           <button type="button" onClick={() => removePage(page.id)} aria-label={`Remove page ${i + 1}`} className="chef-target grid place-items-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--status-danger-text)] transition-colors hover:bg-[var(--status-danger-quiet)]">
                               <Trash2 size={16}/>
                            </button>
                         </div>
@@ -595,6 +703,7 @@ export const ImageToPDF: React.FC = () => {
                             zoom={zoom}
                             updateElement={updateElement}
                             removeElement={removeElement}
+                            rotateElement={rotateElement}
                             onImageDragStart={handleImageDragStart}
                             activeImageDragId={activeImageDrag?.element.id || null}
                          />
@@ -602,13 +711,12 @@ export const ImageToPDF: React.FC = () => {
                   ))}
                </div>
             </div>
-         </div>
-      )}
+      </div>
 
       {/* Page Drag Overlay */}
       {activeId && activePage && createPortal(
          <div 
-            className="fixed pointer-events-none z-50 bg-white shadow-2xl ring-2 ring-blue-500 opacity-90"
+            className="pointer-events-none fixed z-50 bg-white opacity-90 shadow-[var(--elevation-sheet)] ring-2 ring-ink-500"
             style={{ 
                top: overlayStyle.top, 
                left: overlayStyle.left,
@@ -617,7 +725,7 @@ export const ImageToPDF: React.FC = () => {
             }}
          >
              {/* Simplified preview for performance */}
-             <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-400 font-bold text-xl border border-dashed border-slate-300">
+             <div className="flex h-full w-full items-center justify-center border border-dashed border-paper-400 bg-paper-50 text-xl font-bold text-paper-600">
                 Moving Page...
              </div>
          </div>,
@@ -627,7 +735,7 @@ export const ImageToPDF: React.FC = () => {
       {/* Image Drag Overlay */}
       {activeImageDrag && createPortal(
          <div 
-            className="fixed pointer-events-none z-[60] shadow-2xl ring-2 ring-blue-500 opacity-90"
+            className="pointer-events-none fixed z-[60] opacity-90 shadow-[var(--elevation-sheet)] ring-2 ring-ink-500"
             style={{ 
                top: activeImageDrag.clientY - activeImageDrag.offsetY, 
                left: activeImageDrag.clientX - activeImageDrag.offsetX,
@@ -640,6 +748,7 @@ export const ImageToPDF: React.FC = () => {
          </div>,
          document.body
       )}
+      <StatusToast status={status} />
     </div>
   );
 };

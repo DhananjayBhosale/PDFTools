@@ -17,7 +17,7 @@ export const SEOHead: React.FC<SEOHeadProps> = ({ title, description, path, keyw
   const normalizedPath = (path || location.pathname || '/').startsWith('/')
     ? (path || location.pathname || '/')
     : `/${path || location.pathname || '/'}`;
-  const currentUrl = `${origin}/#${normalizedPath}`;
+  const currentUrl = `${origin}${normalizedPath === '/' ? '/' : normalizedPath}`;
 
   useEffect(() => {
     // Update Title

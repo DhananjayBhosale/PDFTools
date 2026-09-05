@@ -1,0 +1,172 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  clampPdfZoom,
+  pdfZoomFromPinch,
+  pdfZoomFromWheel,
+  pdfZoomScrollOffset,
+} from '../services/pdfZoomGesture';
+
+interface PdfPinchZoomOptions {
+  zoom: number;
+  setZoom: (zoom: number) => void;
+  min?: number;
+  max?: number;
+}
+
+interface WebKitGestureEvent extends Event {
+  clientX?: number;
+  clientY?: number;
+  scale: number;
+}
+
+const touchDistance = (touches: TouchList) => {
+  const first = touches.item(0);
+  const second = touches.item(1);
+  if (!first || !second) return 0;
+  return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+};
+
+const touchMidpoint = (touches: TouchList) => {
+  const first = touches.item(0);
+  const second = touches.item(1);
+  if (!first || !second) return null;
+  return {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  };
+};
+
+export const usePdfPinchZoom = ({ zoom, setZoom, min = 0.5, max = 2 }: PdfPinchZoomOptions) => {
+  const [viewport, setViewport] = useState<HTMLElement | null>(null);
+  const zoomRef = useRef(zoom);
+  const pinchStartRef = useRef({ distance: 0, zoom });
+  const gestureStartZoomRef = useRef(zoom);
+  const frameRef = useRef<number | null>(null);
+  const suppressClicksUntilRef = useRef(0);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const applyZoom = useCallback((requestedZoom: number, clientX: number, clientY: number) => {
+    if (!viewport) return;
+    const previousZoom = zoomRef.current;
+    const nextZoom = clampPdfZoom(requestedZoom, min, max);
+    if (Math.abs(nextZoom - previousZoom) < 0.001) return;
+
+    const bounds = viewport.getBoundingClientRect();
+    const pointerX = Math.max(0, Math.min(bounds.width, clientX - bounds.left));
+    const pointerY = Math.max(0, Math.min(bounds.height, clientY - bounds.top));
+    const nextScrollLeft = pdfZoomScrollOffset(viewport.scrollLeft, pointerX, previousZoom, nextZoom);
+    const nextScrollTop = pdfZoomScrollOffset(viewport.scrollTop, pointerY, previousZoom, nextZoom);
+
+    zoomRef.current = nextZoom;
+    setZoom(nextZoom);
+
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(() => {
+      viewport.scrollLeft = nextScrollLeft;
+      viewport.scrollTop = nextScrollTop;
+      frameRef.current = null;
+    });
+  }, [max, min, setZoom, viewport]);
+
+  useEffect(() => {
+    if (!viewport) return undefined;
+
+    const markPinching = () => {
+      suppressClicksUntilRef.current = performance.now() + 250;
+      viewport.dataset.pdfPinching = 'true';
+    };
+    const finishPinching = () => {
+      window.setTimeout(() => {
+        if (performance.now() >= suppressClicksUntilRef.current) {
+          delete viewport.dataset.pdfPinching;
+        }
+      }, 260);
+    };
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      applyZoom(pdfZoomFromWheel(zoomRef.current, event.deltaY, min, max), event.clientX, event.clientY);
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return;
+      event.preventDefault();
+      pinchStartRef.current = { distance: touchDistance(event.touches), zoom: zoomRef.current };
+      markPinching();
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return;
+      const midpoint = touchMidpoint(event.touches);
+      if (!midpoint) return;
+      event.preventDefault();
+      markPinching();
+      applyZoom(
+        pdfZoomFromPinch(
+          pinchStartRef.current.zoom,
+          pinchStartRef.current.distance,
+          touchDistance(event.touches),
+          min,
+          max,
+        ),
+        midpoint.x,
+        midpoint.y,
+      );
+    };
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) finishPinching();
+    };
+    const handleGestureStart = (event: Event) => {
+      event.preventDefault();
+      gestureStartZoomRef.current = zoomRef.current;
+      markPinching();
+    };
+    const handleGestureChange = (event: Event) => {
+      const gesture = event as WebKitGestureEvent;
+      event.preventDefault();
+      markPinching();
+      const bounds = viewport.getBoundingClientRect();
+      applyZoom(
+        gestureStartZoomRef.current * gesture.scale,
+        gesture.clientX ?? bounds.left + bounds.width / 2,
+        gesture.clientY ?? bounds.top + bounds.height / 2,
+      );
+    };
+    const handleGestureEnd = (event: Event) => {
+      event.preventDefault();
+      finishPinching();
+    };
+    const suppressPostPinchClick = (event: MouseEvent) => {
+      if (performance.now() >= suppressClicksUntilRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    viewport.addEventListener('touchstart', handleTouchStart, { passive: false });
+    viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
+    viewport.addEventListener('touchend', handleTouchEnd, { passive: true });
+    viewport.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    viewport.addEventListener('gesturestart', handleGestureStart, { passive: false });
+    viewport.addEventListener('gesturechange', handleGestureChange, { passive: false });
+    viewport.addEventListener('gestureend', handleGestureEnd, { passive: false });
+    viewport.addEventListener('click', suppressPostPinchClick, true);
+
+    return () => {
+      viewport.removeEventListener('wheel', handleWheel);
+      viewport.removeEventListener('touchstart', handleTouchStart);
+      viewport.removeEventListener('touchmove', handleTouchMove);
+      viewport.removeEventListener('touchend', handleTouchEnd);
+      viewport.removeEventListener('touchcancel', handleTouchEnd);
+      viewport.removeEventListener('gesturestart', handleGestureStart);
+      viewport.removeEventListener('gesturechange', handleGestureChange);
+      viewport.removeEventListener('gestureend', handleGestureEnd);
+      viewport.removeEventListener('click', suppressPostPinchClick, true);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      delete viewport.dataset.pdfPinching;
+    };
+  }, [applyZoom, max, min, viewport]);
+
+  return setViewport;
+};

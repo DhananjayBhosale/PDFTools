@@ -1,0 +1,7 @@
+{
+  "health": "ok",
+  "invalidValueCount": 0,
+  "values": {
+    "savings_tally": "{\"inputBytes\":12500,\"outputBytes\":9250}"
+  }
+}

@@ -1,195 +1,158 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
-import { FileText, UploadCloud } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileText, FolderOpen, Upload } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
-import { useOpenedPdf } from '../../hooks/useOpenedPdf';
+import { useOpenedPdf, type OpenedPdfRouteState } from '../../hooks/useOpenedPdf';
+import { Button, cx } from './Primitives';
+import { useHaptics } from '../../hooks/useWorkspaceRuntime';
 
 interface FileUploadProps {
   onFilesSelected: (files: File[]) => void;
   accept: string;
   multiple?: boolean;
   label?: string;
+  /**
+   * Whether the currently opened PDF may seed this queue. Compare needs it for
+   * Document A only: seeding both slots would silently compare a file with
+   * itself.
+   */
+  allowOpenedPdf?: boolean;
 }
 
 const getAcceptLabel = (accept: string) => {
   const normalized = accept.toLowerCase();
-
   if (normalized.includes('image/*')) return 'Images';
   if (normalized.includes('application/pdf') || normalized.includes('.pdf')) return 'PDF';
+  if (normalized.includes('wordprocessingml') || normalized.includes('.docx')) return 'DOCX';
+  if (normalized.includes('presentationml') || normalized.includes('.pptx')) return 'PPTX';
+  if (normalized.includes('spreadsheetml') || normalized.includes('.xlsx')) return 'XLSX';
 
   const parts = normalized
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part.replace(/^\./, '').replace('*', 'all'));
+    .map((part) => (part.includes('/') ? part.split('/').pop() ?? part : part).replace(/^\./, '').replace('*', 'any').slice(0, 5).toUpperCase());
 
-  return parts.length ? parts.join(' / ') : 'Files';
+  return parts.length ? parts.join(' or ') : 'Files';
 };
 
-const MetaPill: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-    {children}
-  </span>
-);
-
+/**
+ * The one way a document enters the app. It is a button first and a drop target
+ * second, because on a phone there is nothing to drop. Drag styling only appears
+ * on devices that can actually drag.
+ */
 export const FileUpload: React.FC<FileUploadProps> = ({
   onFilesSelected,
   accept,
   multiple = false,
-  label = 'Drop your PDF here',
+  label = 'Choose a PDF',
+  allowOpenedPdf = true,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [didAutoUseOpenedPdf, setDidAutoUseOpenedPdf] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const reduceMotion = useReducedMotion();
+  const [usedOpenedPdf, setUsedOpenedPdf] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const { openedPdf } = useOpenedPdf();
+  const haptic = useHaptics();
 
   const acceptLabel = useMemo(() => getAcceptLabel(accept), [accept]);
   const acceptsPdf = accept.toLowerCase().includes('.pdf') || accept.toLowerCase().includes('application/pdf');
-  const routeState = location.state as { useOpenedPdf?: boolean; openedPdfId?: string } | null;
-  const canUseOpenedPdf = Boolean(openedPdf && acceptsPdf && !multiple);
+  const routeState = location.state as OpenedPdfRouteState | null;
+  const canUseOpenedPdf = Boolean(allowOpenedPdf && openedPdf && acceptsPdf);
 
   useEffect(() => {
-    if (!canUseOpenedPdf || !routeState?.useOpenedPdf || didAutoUseOpenedPdf || !openedPdf) return;
-
-    setDidAutoUseOpenedPdf(true);
+    if (
+      !canUseOpenedPdf
+      || !routeState?.useOpenedPdf
+      || routeState.openedPdfId !== openedPdf?.id
+      || usedOpenedPdf
+      || !openedPdf
+    ) return;
+    setUsedOpenedPdf(true);
     onFilesSelected([openedPdf.file]);
-  }, [canUseOpenedPdf, didAutoUseOpenedPdf, onFilesSelected, openedPdf, routeState?.useOpenedPdf]);
+  }, [canUseOpenedPdf, onFilesSelected, openedPdf, routeState?.openedPdfId, routeState?.useOpenedPdf, usedOpenedPdf]);
 
-  const triggerPicker = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (!isDragging) setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      onFilesSelected(Array.from(e.dataTransfer.files));
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      onFilesSelected(Array.from(e.target.files));
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      triggerPicker();
-    }
-  };
+  const openPicker = useCallback(() => {
+    haptic('selection');
+    inputRef.current?.click();
+  }, [haptic]);
 
   return (
-    <motion.div
-      role="button"
-      tabIndex={0}
-      aria-label={label}
-      onKeyDown={handleKeyDown}
-      onClick={triggerPicker}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      whileHover={reduceMotion ? undefined : { y: -2 }}
-      whileTap={reduceMotion ? undefined : { scale: 0.99 }}
-      className={[
-        'group relative w-full overflow-hidden rounded-3xl border transition-all duration-300 outline-none',
-        'border-solid shadow-[0_18px_44px_rgba(15,23,42,0.05)]',
+    <div
+      data-file-upload
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!isDragging) setIsDragging(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+        setIsDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        const dropped = Array.from(event.dataTransfer.files ?? []);
+        if (dropped.length > 0) {
+          haptic('commit');
+          onFilesSelected(multiple ? dropped : dropped.slice(0, 1));
+        }
+      }}
+      className={cx(
+        'rounded-[var(--radius-panel)] border border-dashed p-4 text-center transition-colors duration-transition ease-settle sm:p-6',
         isDragging
-          ? 'border-cyan-400 bg-cyan-50/75 dark:border-cyan-400 dark:bg-cyan-500/10'
-          : 'border-slate-200 bg-white/90 hover:border-cyan-300 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-cyan-500/50',
-      ].join(' ')}
+          ? 'border-[var(--accent-rest)] bg-[var(--accent-quiet)]'
+          : 'border-[var(--border-strong)] bg-[var(--surface-raised)]',
+      )}
     >
       <input
-        ref={fileInputRef}
+        ref={inputRef}
         type="file"
-        className="hidden"
+        // Opened by the labelled button beside it, so it must not also sit in
+        // the tab order as an unlabelled 1x1 stop.
+        tabIndex={-1}
+        aria-hidden="true"
+        className="sr-only"
         accept={accept}
         multiple={multiple}
-        onChange={handleFileChange}
+        onChange={(event) => {
+          const picked = Array.from(event.target.files ?? []);
+          if (picked.length > 0) {
+            haptic('commit');
+            onFilesSelected(picked);
+          }
+          event.target.value = '';
+        }}
       />
 
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-50/70 via-transparent to-slate-100/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-slate-900/30 dark:to-slate-800/20" />
+      <span
+        aria-hidden
+        className="mx-auto mb-2 grid h-11 w-11 place-items-center rounded-[var(--radius-control)] bg-[var(--accent-quiet)] text-[var(--accent-on-quiet)]"
+      >
+        <Upload size={20} strokeWidth={1.9} />
+      </span>
 
-      <div className="relative p-5 sm:p-6">
-        <div className="mb-4 flex justify-center">
-          <span className="inline-flex items-center rounded-lg bg-slate-100 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-            Drop Zone
-          </span>
-        </div>
+      <h2 className="type-title3 font-semibold text-[var(--text-primary)]">{label}</h2>
+      {multiple ? (
+        <p className="type-footnote mx-auto mt-1 max-w-measure text-[var(--text-secondary)]">
+          {acceptLabel} · several at once
+        </p>
+      ) : null}
 
-        <div
-          className={[
-            'rounded-2xl border-2 border-dashed px-5 py-8 text-center transition-colors sm:px-8 sm:py-10',
-            isDragging
-              ? 'border-cyan-400 bg-cyan-50/70 dark:border-cyan-400 dark:bg-cyan-500/10'
-              : 'border-slate-300 bg-slate-50/65 dark:border-slate-700 dark:bg-slate-900/40',
-          ].join(' ')}
-        >
-          <motion.div
-            animate={reduceMotion ? undefined : isDragging ? { scale: [1, 1.06, 1] } : { y: [0, -2, 0] }}
-            transition={reduceMotion ? undefined : { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white text-blue-500 shadow-md dark:bg-slate-900"
-          >
-            <UploadCloud size={30} />
-          </motion.div>
-
-          <h3 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{label}</h3>
-          <p className="mt-2 text-base font-medium text-slate-500 dark:text-slate-400">Keyboard and drag supported</p>
-
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              triggerPicker();
-            }}
-            className="mt-7 inline-flex items-center rounded-2xl bg-orange-500 px-8 py-3 text-lg font-bold text-white shadow-[0_10px_22px_rgba(249,115,22,0.35)] transition-colors hover:bg-orange-600"
-          >
-            Browse files
-          </button>
-
-          {canUseOpenedPdf && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                if (openedPdf) onFilesSelected([openedPdf.file]);
-              }}
-              className="ml-2 mt-7 inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-6 py-3 text-lg font-bold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
-            >
-              <FileText size={18} />
-              Use current PDF
-            </button>
-          )}
-        </div>
-
-        <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <MetaPill>{acceptLabel}</MetaPill>
-            <MetaPill>{multiple ? 'Multiple files' : 'Single file'}</MetaPill>
-            <MetaPill>Local processing</MetaPill>
-          </div>
-        </div>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <Button tone="primary" icon={<FolderOpen aria-hidden size={16} />} onClick={openPicker}>
+          {multiple ? 'Choose files' : 'Choose file'}
+        </Button>
+        {canUseOpenedPdf && openedPdf && (
+          <Button icon={<FileText aria-hidden size={16} />} onClick={() => onFilesSelected([openedPdf.file])}>
+            Use {openedPdf.name.length > 22 ? `${openedPdf.name.slice(0, 20)}…` : openedPdf.name}
+          </Button>
+        )}
       </div>
-    </motion.div>
+
+      <p className="type-footnote mt-2.5 hidden text-[var(--text-tertiary)] sm:block">
+        You can also drop a file anywhere in this box.
+      </p>
+    </div>
   );
 };

@@ -13,7 +13,7 @@ function formatKb(value) {
 
 async function main() {
   const files = await fs.readdir(assetsDir);
-  const jsFiles = files.filter((file) => file.endsWith('.js'));
+  const jsFiles = files.filter((file) => file.endsWith('.js') || file.endsWith('.mjs'));
   const entries = [];
 
   for (const file of jsFiles) {

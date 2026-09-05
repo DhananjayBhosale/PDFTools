@@ -1,0 +1,7 @@
+{
+  "health": "ok",
+  "invalidValueCount": 0,
+  "values": {
+    "tool_usage_memory": "valid text\u0000hidden"
+  }
+}
